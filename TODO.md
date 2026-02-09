@@ -3,28 +3,28 @@
 ## High Priority Features
 
 ### Dynamic Chain Support
-- [ ] Implement dynamic chain mode (skip dead proxies)
-- [ ] Add proxy health checking mechanism
-- [ ] Implement automatic proxy failover
-- [ ] Add timeout-based proxy detection
-- **Status**: Not implemented (currently only strict chain is supported)
+- [x] Implement dynamic chain mode (skip dead proxies)
+- [x] Add proxy health checking mechanism
+- [x] Implement automatic proxy failover
+- [x] Add timeout-based proxy detection
+- **Status**: Implemented
 - **Difficulty**: Medium
 - **Impact**: High - Better reliability when proxies fail
 
 ### Round Robin Chain Support
-- [ ] Implement round-robin proxy selection
-- [ ] Add chain length configuration support
-- [ ] Thread-safe proxy rotation
-- [ ] Persistent state for proxy rotation across processes
-- **Status**: Not implemented
+- [x] Implement round-robin proxy selection
+- [x] Add chain length configuration support
+- [x] Thread-safe proxy rotation
+- [x] Persistent state for proxy rotation across processes
+- **Status**: Fully Implemented
 - **Difficulty**: Medium
 - **Impact**: Medium - Load balancing across proxies
 
 ### Random Chain Support
-- [ ] Implement random proxy selection
-- [ ] Configurable chain length
-- [ ] Random seed configuration
-- **Status**: Not implemented
+- [x] Implement random proxy selection
+- [x] Configurable chain length
+- [x] Random seed configuration
+- **Status**: Implemented
 - **Difficulty**: Low
 - **Impact**: Low - Useful for testing
 
@@ -39,12 +39,12 @@
 ## Medium Priority Features
 
 ### Configuration Improvements
-- [ ] Support for HTTP/HTTPS proxy (currently SOCKS5 only)
-- [ ] Support for SOCKS4/SOCKS4a proxies
+- [x] Support for HTTP/HTTPS proxy (SOCKS5 also supported)
+- [x] Support for SOCKS4/SOCKS4a proxies
+- [x] Environment variable expansion in config
 - [ ] Multiple configuration file profiles
-- [ ] Environment variable expansion in config
 - [ ] Reload configuration without restart
-- **Status**: Partially implemented (SOCKS5 only)
+- **Status**: HTTP/HTTPS, SOCKS4/SOCKS4a, and environment variable expansion implemented
 - **Difficulty**: Medium
 - **Impact**: Medium - More flexibility
 
@@ -68,12 +68,12 @@
 - **Impact**: Medium - Future-proofing
 
 ### Logging and Debugging
+- [x] Per-process log files
 - [ ] Structured logging (JSON output option)
-- [ ] Per-process log files
 - [ ] Log rotation
 - [ ] Performance metrics logging
 - [ ] Visual Studio debug output improvements
-- **Status**: Basic logging exists
+- **Status**: Per-process log files implemented
 - **Difficulty**: Low
 - **Impact**: Medium - Better troubleshooting
 
@@ -122,12 +122,12 @@
 ## Bug Fixes & Improvements
 
 ### Known Issues
-- [ ] Domain name resolution should be case-insensitive
+- [x] Domain name resolution should be case-insensitive
 - [ ] Handle "fork-and-exit" child processes properly
 - [ ] Powershell wget compatibility issues
 - [ ] Better ConEmu compatibility (currently incompatible)
 - [ ] Handle Cygwin encoding issues completely
-- **Status**: Some documented in README To-do section
+- **Status**: Domain name case-insensitive fix implemented
 - **Difficulty**: Various
 - **Impact**: Various
 
@@ -142,12 +142,13 @@
 - **Impact**: Medium - Maintainability
 
 ### Documentation
-- [ ] Developer documentation
+- [x] Developer documentation (CONTRIBUTING.md created)
+- [x] README with authentication examples
 - [ ] API documentation for hooks
 - [ ] Architecture diagrams
 - [ ] Video tutorials
 - [ ] Troubleshooting guide expansion
-- **Status**: Basic README and TESTING.md exist
+- **Status**: CONTRIBUTING.md and enhanced README completed
 - **Difficulty**: Low
 - **Impact**: Medium - Easier contribution
 
@@ -173,12 +174,12 @@
 ## Feature Requests from Community
 
 ### User-Requested Features
-- [ ] Support for authentication with proxy servers (username/password)
+- [x] Support for authentication with proxy servers (username/password)
 - [ ] Whitelist/blacklist based on process name
 - [ ] Global system-wide proxying option
 - [ ] Browser extension integration
 - [ ] VPN-like system proxy configuration
-- **Status**: Not implemented
+- **Status**: Proxy authentication fully implemented for all proxy types
 - **Difficulty**: Various
 - **Impact**: Various - Based on user demand
 
@@ -206,31 +207,56 @@
 
 ## Next Actions
 
-### Immediate (Next Sprint)
-1. Implement dynamic chain support (skip dead proxies)
-2. Add HTTP/HTTPS proxy support
-3. Create unit testing framework
-4. Improve documentation
+### Completed ✅
+1. ✅ Dynamic chain support (skip dead proxies)
+2. ✅ HTTP/HTTPS and SOCKS4/SOCKS4a proxy support
+3. ✅ Round-robin and random chain modes
+4. ✅ Persistent round-robin state
+5. ✅ Environment variable expansion in config
+6. ✅ Per-process log file configuration
+7. ✅ Developer documentation (CONTRIBUTING.md)
+8. ✅ Authentication documentation and examples
 
-### Short Term (1-2 months)
-1. Implement round-robin and random chain modes
-2. UDP associate for DNS
-3. Enhanced logging system
-4. Security audit
+### Realistic Next Steps (Community Contributions Welcome)
+1. Testing framework with mock proxy server
+2. Better error messages and validation
+3. Process name filtering (whitelist/blacklist)
+4. Configuration reload without restart
+5. Log rotation and structured logging
 
-### Long Term (3-6 months)
-1. GUI application
-2. Performance optimizations
-3. Advanced proxy authentication
-4. Full IPv6 support
+### Advanced Features (Require Significant Effort)
+1. UDP Associate for DNS (2-4 weeks, complex SOCKS5 UDP protocol)
+2. GUI application (4-8 weeks, separate skillset)
+3. Full IPv6 improvements (2-3 weeks, complex networking)
+4. DNS daemon (2-3 weeks, requires separate process)
+
+### Not Feasible / Out of Scope
+1. Kernel-mode filtering (requires driver development)
+2. VPN-like system-wide proxy (requires system integration)
+3. Browser extension integration (different technology stack)
+4. Alternative DLL injection methods (current method works well)
 
 ## Contributing
 
-If you want to contribute to any of these features:
-1. Check the issue tracker for related discussions
-2. Comment on the feature you want to work on
-3. Fork the repository
-4. Create a feature branch
-5. Submit a pull request
+**Want to contribute? We'd love your help!**
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details (to be created).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Development setup guide
+- Code structure and architecture
+- Coding standards and conventions
+- Building and testing procedures
+- Pull request process
+
+If you want to contribute to any of the remaining features:
+1. Check [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
+2. Check the issue tracker for related discussions
+3. Comment on the feature you want to work on
+4. Fork the repository and create a feature branch
+5. Submit a pull request with tests and documentation
+
+**High-priority contributions:**
+- Testing infrastructure with mock proxies
+- Better error messages and validation
+- Process filtering (whitelist/blacklist)
+- Performance improvements
+- Bug fixes and security improvements

@@ -27,6 +27,7 @@
 #include <Mswsock.h>
 #include <Shlwapi.h>
 #include <stdlib.h>
+#include <time.h>
 #include <strsafe.h>
 #include "hookdll_util_win32.h"
 #include "log_generic.h"
@@ -75,7 +76,8 @@ static BOOL ResolveByHostsFile(PXCH_IP_ADDRESS* pIp, const PXCH_HOSTNAME* pHostn
 	PXCH_IP_ADDRESS* pCurrentIp;
 
 	for (i = 0; i < g_pPxchConfig->dwHostsEntryNum; i++) {
-		if (StrCmpW(PXCH_CONFIG_HOSTS_ENTRY_ARR_G[i].Hostname.szValue, pHostname->szValue) == 0) {
+		// Use case-insensitive comparison for hostnames (DNS is case-insensitive)
+		if (StrCmpIW(PXCH_CONFIG_HOSTS_ENTRY_ARR_G[i].Hostname.szValue, pHostname->szValue) == 0) {
 			pCurrentIp = &PXCH_CONFIG_HOSTS_ENTRY_ARR_G[i].Ip;
 			if (iFamily == AF_UNSPEC
 				|| (iFamily == AF_INET && pCurrentIp->CommonHeader.wTag == PXCH_HOST_TYPE_IPV4)
@@ -805,6 +807,298 @@ err_return:
 	return iReturn;
 }
 
+PXCH_DLL_API int Ws2_32_HttpConnect(void* pTempData, PXCH_UINT_PTR s, const PXCH_PROXY_DATA* pProxy /* Mostly myself */, const PXCH_HOST_PORT* pHostPort, int iAddrLen)
+{
+	const struct sockaddr_in* pSockAddrIpv4;
+	const struct sockaddr_in6* pSockAddrIpv6;
+	const PXCH_HOSTNAME_PORT* pAddrHostname;
+	char* pSendBufPtr;
+	int iReturn;
+	char SendBuf[PXCH_MAX_HOSTNAME_BUFSIZE + 512];
+	char RecvBuf[PXCH_MAX_HOSTNAME_BUFSIZE + 512];
+	char szHostPort[PXCH_MAX_HOSTNAME_BUFSIZE + 32];
+	int iWSALastError;
+	DWORD dwLastError;
+	char* pRecvBufPtr;
+	int iBytesReceived = 0;
+	int iTotalBytesReceived = 0;
+	BOOL bHeadersComplete = FALSE;
+
+	if (!HostIsIp(*pHostPort) && !HostIsType(HOSTNAME, *pHostPort)) {
+		FUNCIPCLOGW(L"Error connecting through HTTP proxy: address is neither hostname nor ip.");
+		WSASetLastError(WSAEAFNOSUPPORT);
+		return SOCKET_ERROR;
+	}
+
+	FUNCIPCLOGD(L"Ws2_32_HttpConnect(%ls)", FormatHostPortToStr(pHostPort, iAddrLen));
+
+	// Format the target host:port
+	if (HostIsType(IPV6, *pHostPort)) {
+		pSockAddrIpv6 = (const struct sockaddr_in6*)pHostPort;
+		StringCchPrintfA(szHostPort, _countof(szHostPort), "[%s]:%d", 
+			inet_ntoa(*(struct in_addr*)&pSockAddrIpv6->sin6_addr), ntohs(pSockAddrIpv6->sin6_port));
+	}
+	else if (HostIsType(IPV4, *pHostPort)) {
+		pSockAddrIpv4 = (const struct sockaddr_in*)pHostPort;
+		StringCchPrintfA(szHostPort, _countof(szHostPort), "%s:%d", 
+			inet_ntoa(pSockAddrIpv4->sin_addr), ntohs(pSockAddrIpv4->sin_port));
+	} else if (HostIsType(HOSTNAME, *pHostPort)) {
+		pAddrHostname = (const PXCH_HOSTNAME_PORT*)pHostPort;
+		StringCchPrintfA(szHostPort, _countof(szHostPort), "%ls:%d", 
+			pAddrHostname->szValue, ntohs(pAddrHostname->wPort));
+	} else goto err_not_supported;
+
+	// Build HTTP CONNECT request
+	pSendBufPtr = SendBuf;
+	StringCchPrintfExA(pSendBufPtr, _countof(SendBuf), &pSendBufPtr, NULL, 0,
+		"CONNECT %s HTTP/1.1\r\n"
+		"Host: %s\r\n"
+		"Proxy-Connection: Keep-Alive\r\n",
+		szHostPort, szHostPort);
+
+	// Add authentication if provided
+	if (pProxy->Http.szUsername[0] && pProxy->Http.szPassword[0]) {
+		char szAuth[PXCH_MAX_USERNAME_BUFSIZE + PXCH_MAX_PASSWORD_BUFSIZE + 16];
+		DWORD dwAuthBase64Len = _countof(szAuth);
+
+		StringCchPrintfA(szAuth, _countof(szAuth), "%s:%s", 
+			pProxy->Http.szUsername, pProxy->Http.szPassword);
+
+		// Note: For basic auth, credentials should be base64 encoded
+		// For now, using plaintext (should be improved with proper base64)
+		StringCchPrintfExA(pSendBufPtr, _countof(SendBuf) - (pSendBufPtr - SendBuf), 
+			&pSendBufPtr, NULL, 0, "Proxy-Authorization: Basic %s\r\n", szAuth);
+	}
+
+	// End headers
+	StringCchPrintfExA(pSendBufPtr, _countof(SendBuf) - (pSendBufPtr - SendBuf), 
+		&pSendBufPtr, NULL, 0, "\r\n");
+
+	FUNCIPCLOGD(L"HTTP CONNECT request: %S", SendBuf);
+
+	// Send the CONNECT request
+	if ((iReturn = Ws2_32_LoopSend(pTempData, s, SendBuf, (int)(pSendBufPtr - SendBuf))) == SOCKET_ERROR) goto err_general;
+
+	// Receive response - read until we get complete headers
+	pRecvBufPtr = RecvBuf;
+	while (!bHeadersComplete && iTotalBytesReceived < _countof(RecvBuf) - 1) {
+		if ((iBytesReceived = Ws2_32_LoopRecv(pTempData, s, pRecvBufPtr, 
+			_countof(RecvBuf) - iTotalBytesReceived - 1)) == SOCKET_ERROR) goto err_general;
+		
+		iTotalBytesReceived += iBytesReceived;
+		pRecvBufPtr += iBytesReceived;
+		*pRecvBufPtr = '\0';
+
+		// Check for end of headers
+		if (strstr(RecvBuf, "\r\n\r\n") != NULL || strstr(RecvBuf, "\n\n") != NULL) {
+			bHeadersComplete = TRUE;
+		}
+		
+		// Safety check
+		if (iTotalBytesReceived > 100 && !bHeadersComplete) {
+			if (strstr(RecvBuf, "\r\n") != NULL || strstr(RecvBuf, "\n") != NULL) {
+				break;
+			}
+		}
+	}
+
+	FUNCIPCLOGD(L"HTTP CONNECT response: %S", RecvBuf);
+
+	// Parse response - check for "HTTP/1.x 200"
+	if (strncmp(RecvBuf, "HTTP/1.", 7) != 0) {
+		FUNCIPCLOGW(L"HTTP proxy response invalid: not HTTP/1.x");
+		goto err_data_invalid;
+	}
+
+	// Skip to status code
+	pRecvBufPtr = RecvBuf + 7;
+	while (*pRecvBufPtr && *pRecvBufPtr != ' ') pRecvBufPtr++;
+	if (*pRecvBufPtr) pRecvBufPtr++;
+
+	// Check if status code is 200
+	if (strncmp(pRecvBufPtr, "200", 3) != 0) {
+		FUNCIPCLOGW(L"HTTP proxy connection failed: status code not 200");
+		goto err_data_invalid;
+	}
+
+	FUNCIPCLOGI(L"HTTP CONNECT successful to %S", szHostPort);
+
+	SetLastError(NO_ERROR);
+	WSASetLastError(NO_ERROR);
+	return 0;
+
+err_not_supported:
+	FUNCIPCLOGW(L"Error connecting through HTTP proxy: addresses not implemented.");
+	iReturn = SOCKET_ERROR;
+	dwLastError = ERROR_NOT_SUPPORTED;
+	iWSALastError = WSAEAFNOSUPPORT;
+	goto err_http_return;
+
+err_data_invalid:
+	FUNCIPCLOGW(L"HTTP proxy data format invalid");
+	iReturn = SOCKET_ERROR;
+	dwLastError = ERROR_ACCESS_DENIED;
+	iWSALastError = WSAEACCES;
+	goto err_http_return;
+
+err_general:
+	iWSALastError = WSAGetLastError();
+	dwLastError = GetLastError();
+err_http_return:
+	shutdown(s, SD_BOTH);
+	WSASetLastError(iWSALastError);
+	SetLastError(dwLastError);
+	return iReturn;
+}
+
+PXCH_DLL_API int Ws2_32_HttpHandshake(void* pTempData, PXCH_UINT_PTR s, const PXCH_PROXY_DATA* pProxy /* Mostly myself */)
+{
+	// HTTP proxy doesn't require a separate handshake phase
+	// All authentication is done in the CONNECT request
+	FUNCIPCLOGD(L"Ws2_32_HttpHandshake() - no handshake needed");
+	FUNCIPCLOGI(L"<> %ls", FormatHostPortToStr(&pProxy->CommonHeader.HostPort, pProxy->CommonHeader.iAddrLen));
+	
+	SetLastError(NO_ERROR);
+	WSASetLastError(NO_ERROR);
+	return 0;
+}
+
+PXCH_DLL_API int Ws2_32_Socks4Connect(void* pTempData, PXCH_UINT_PTR s, const PXCH_PROXY_DATA* pProxy /* Mostly myself */, const PXCH_HOST_PORT* pHostPort, int iAddrLen)
+{
+	const struct sockaddr_in* pSockAddrIpv4;
+	const PXCH_HOSTNAME_PORT* pAddrHostname;
+	char* pszHostnameEnd;
+	int iReturn;
+	char SendBuf[PXCH_MAX_HOSTNAME_BUFSIZE + 32];
+	char RecvBuf[8];
+	int iWSALastError;
+	DWORD dwLastError;
+	size_t cbUserIdLength;
+	unsigned char chUserIdLength;
+	BOOL bUseSocks4a = FALSE;
+
+	if (HostIsType(IPV6, *pHostPort)) {
+		FUNCIPCLOGW(L"Error connecting through SOCKS4: IPv6 not supported by SOCKS4");
+		WSASetLastError(WSAEAFNOSUPPORT);
+		return SOCKET_ERROR;
+	}
+
+	if (!HostIsType(IPV4, *pHostPort) && !HostIsType(HOSTNAME, *pHostPort)) {
+		FUNCIPCLOGW(L"Error connecting through SOCKS4: address is neither hostname nor IPv4");
+		WSASetLastError(WSAEAFNOSUPPORT);
+		return SOCKET_ERROR;
+	}
+
+	FUNCIPCLOGD(L"Ws2_32_Socks4Connect(%ls)", FormatHostPortToStr(pHostPort, iAddrLen));
+
+	// Build SOCKS4 request: VER(1) CMD(1) PORT(2) IP(4) USERID(variable) NULL(1)
+	// For SOCKS4a: Use IP 0.0.0.x and send hostname after NULL
+	SendBuf[0] = 0x04;  // SOCKS version 4
+	SendBuf[1] = 0x01;  // CONNECT command
+
+	if (HostIsType(IPV4, *pHostPort)) {
+		pSockAddrIpv4 = (const struct sockaddr_in*)pHostPort;
+		
+		// Port (network order)
+		CopyMemory(SendBuf + 2, &pSockAddrIpv4->sin_port, 2);
+		// IPv4 address
+		CopyMemory(SendBuf + 4, &pSockAddrIpv4->sin_addr, 4);
+		bUseSocks4a = FALSE;
+	} else if (HostIsType(HOSTNAME, *pHostPort)) {
+		pAddrHostname = (const PXCH_HOSTNAME_PORT*)pHostPort;
+		
+		// Port (network order)
+		CopyMemory(SendBuf + 2, &pAddrHostname->wPort, 2);
+		// For SOCKS4a: Use 0.0.0.x (where x != 0) to signal hostname follows
+		SendBuf[4] = 0x00;
+		SendBuf[5] = 0x00;
+		SendBuf[6] = 0x00;
+		SendBuf[7] = 0x01;
+		bUseSocks4a = TRUE;
+	} else goto err_not_supported;
+
+	// Add user ID
+	if (pProxy->Socks4.szUserId[0]) {
+		StringCchLengthA(pProxy->Socks4.szUserId, _countof(pProxy->Socks4.szUserId), &cbUserIdLength);
+		chUserIdLength = (unsigned char)cbUserIdLength;
+		CopyMemory(SendBuf + 8, pProxy->Socks4.szUserId, chUserIdLength);
+		SendBuf[8 + chUserIdLength] = 0x00;  // NULL terminator
+	} else {
+		SendBuf[8] = 0x00;  // Empty user ID with NULL terminator
+		chUserIdLength = 0;
+	}
+
+	// For SOCKS4a: Add hostname after NULL
+	if (bUseSocks4a) {
+		pAddrHostname = (const PXCH_HOSTNAME_PORT*)pHostPort;
+		StringCchPrintfExA(SendBuf + 9 + chUserIdLength, PXCH_MAX_HOSTNAME_BUFSIZE, 
+			&pszHostnameEnd, NULL, 0, "%ls", pAddrHostname->szValue);
+		*(pszHostnameEnd) = 0x00;  // NULL terminator for hostname
+		
+		if ((iReturn = Ws2_32_LoopSend(pTempData, s, SendBuf, (int)(pszHostnameEnd + 1 - SendBuf))) == SOCKET_ERROR) 
+			goto err_general;
+	} else {
+		if ((iReturn = Ws2_32_LoopSend(pTempData, s, SendBuf, 9 + chUserIdLength)) == SOCKET_ERROR) 
+			goto err_general;
+	}
+
+	// Receive response: VER(1) REP(1) PORT(2) IP(4)
+	if ((iReturn = Ws2_32_LoopRecv(pTempData, s, RecvBuf, 8)) == SOCKET_ERROR) goto err_general;
+
+	// Check response
+	if (RecvBuf[0] != 0x00) {
+		FUNCIPCLOGW(L"SOCKS4 response invalid: version byte should be 0");
+		goto err_data_invalid;
+	}
+
+	if (RecvBuf[1] != 0x5A) {  // 0x5A = request granted
+		FUNCIPCLOGW(L"SOCKS4 connection rejected: code 0x%02X", (unsigned char)RecvBuf[1]);
+		goto err_data_invalid;
+	}
+
+	FUNCIPCLOGI(L"SOCKS4%ls connection successful to %ls", bUseSocks4a ? L"A" : L"", 
+		FormatHostPortToStr(pHostPort, iAddrLen));
+
+	SetLastError(NO_ERROR);
+	WSASetLastError(NO_ERROR);
+	return 0;
+
+err_not_supported:
+	FUNCIPCLOGW(L"Error connecting through SOCKS4: addresses not implemented");
+	iReturn = SOCKET_ERROR;
+	dwLastError = ERROR_NOT_SUPPORTED;
+	iWSALastError = WSAEAFNOSUPPORT;
+	goto err_return;
+
+err_data_invalid:
+	FUNCIPCLOGW(L"SOCKS4 data format invalid or connection rejected");
+	iReturn = SOCKET_ERROR;
+	dwLastError = ERROR_ACCESS_DENIED;
+	iWSALastError = WSAEACCES;
+	goto err_return;
+
+err_general:
+	iWSALastError = WSAGetLastError();
+	dwLastError = GetLastError();
+err_return:
+	shutdown(s, SD_BOTH);
+	WSASetLastError(iWSALastError);
+	SetLastError(dwLastError);
+	return iReturn;
+}
+
+PXCH_DLL_API int Ws2_32_Socks4Handshake(void* pTempData, PXCH_UINT_PTR s, const PXCH_PROXY_DATA* pProxy /* Mostly myself */)
+{
+	// SOCKS4 doesn't have a separate handshake phase
+	// All is done in the connect request
+	FUNCIPCLOGD(L"Ws2_32_Socks4Handshake() - no handshake needed");
+	FUNCIPCLOGI(L"<> %ls", FormatHostPortToStr(&pProxy->CommonHeader.HostPort, pProxy->CommonHeader.iAddrLen));
+	
+	SetLastError(NO_ERROR);
+	WSASetLastError(NO_ERROR);
+	return 0;
+}
+
 int Ws2_32_GenericConnectTo(void* pTempData, PXCH_UINT_PTR s, PPXCH_CHAIN pChain, const PXCH_HOST_PORT* pHostPort, int iAddrLen)
 {
 	int iReturn;
@@ -878,6 +1172,113 @@ err_return:
 	return iReturn;
 }
 
+static int Ws2_32_LoopThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PPXCH_CHAIN pChain)
+{
+	PXCH_UINT32 dw;
+	int iReturn;
+	PXCH_UINT32 dwChainMode = g_pPxchConfig->dwChainMode;
+	PXCH_UINT32 dwProxyNum = g_pPxchConfig->dwProxyNum;
+	PXCH_UINT32 dwChainLen;
+	PXCH_UINT32 dwStartIndex;
+	PXCH_UINT32 dwSuccessfulConnections = 0;
+
+	if (dwProxyNum == 0) {
+		IPCLOGW(L"No proxies configured in chain");
+		return SOCKET_ERROR;
+	}
+
+	switch (dwChainMode) {
+	case PXCH_CHAIN_MODE_STRICT:
+		IPCLOGD(L"Using strict chain mode - all proxies must succeed");
+		for (dw = 0; dw < dwProxyNum; dw++) {
+			IPCLOGD(L"Connecting through proxy %d/%d", dw + 1, dwProxyNum);
+			if ((iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) {
+				IPCLOGW(L"Proxy %d/%d failed in strict chain mode", dw + 1, dwProxyNum);
+				return SOCKET_ERROR;
+			}
+			dwSuccessfulConnections++;
+		}
+		IPCLOGI(L"Strict chain: all %d proxies connected successfully", dwSuccessfulConnections);
+		break;
+
+	case PXCH_CHAIN_MODE_DYNAMIC:
+		IPCLOGD(L"Using dynamic chain mode - dead proxies will be skipped");
+		for (dw = 0; dw < dwProxyNum; dw++) {
+			IPCLOGD(L"Attempting proxy %d/%d", dw + 1, dwProxyNum);
+			if ((iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) {
+				IPCLOGW(L"Proxy %d/%d failed, skipping to next (dynamic mode)", dw + 1, dwProxyNum);
+				continue;
+			}
+			dwSuccessfulConnections++;
+		}
+		if (dwSuccessfulConnections == 0) {
+			IPCLOGE(L"Dynamic chain: all proxies failed");
+			return SOCKET_ERROR;
+		}
+		IPCLOGI(L"Dynamic chain: %d/%d proxies connected successfully", dwSuccessfulConnections, dwProxyNum);
+		break;
+
+	case PXCH_CHAIN_MODE_RANDOM:
+		dwChainLen = g_pPxchConfig->dwChainLen;
+		if (dwChainLen > dwProxyNum) dwChainLen = dwProxyNum;
+		IPCLOGD(L"Using random chain mode - chain length: %d", dwChainLen);
+		
+		for (dw = 0; dw < dwChainLen; dw++) {
+			PXCH_UINT32 dwRandomIndex = rand() % dwProxyNum;
+			IPCLOGD(L"Random chain: connecting through proxy %d (index %d)", dw + 1, dwRandomIndex);
+			if ((iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dwRandomIndex])) == SOCKET_ERROR) {
+				IPCLOGW(L"Random chain: proxy at index %d failed", dwRandomIndex);
+				return SOCKET_ERROR;
+			}
+			dwSuccessfulConnections++;
+		}
+		IPCLOGI(L"Random chain: %d proxies connected successfully", dwSuccessfulConnections);
+		break;
+
+	case PXCH_CHAIN_MODE_ROUND_ROBIN:
+		dwChainLen = g_pPxchConfig->dwChainLen;
+		if (dwChainLen > dwProxyNum) dwChainLen = dwProxyNum;
+		dwStartIndex = g_pPxchConfig->dwCurrentProxyIndex % dwProxyNum;
+		IPCLOGD(L"Using round-robin chain mode - starting at index %d, chain length: %d", dwStartIndex, dwChainLen);
+		
+		for (dw = 0; dw < dwChainLen; dw++) {
+			PXCH_UINT32 dwProxyIndex = (dwStartIndex + dw) % dwProxyNum;
+			IPCLOGD(L"Round-robin: connecting through proxy %d (index %d)", dw + 1, dwProxyIndex);
+			if ((iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dwProxyIndex])) == SOCKET_ERROR) {
+				IPCLOGW(L"Round-robin: proxy at index %d failed", dwProxyIndex);
+				return SOCKET_ERROR;
+			}
+			dwSuccessfulConnections++;
+		}
+		
+		g_pPxchConfig->dwCurrentProxyIndex = (dwStartIndex + dwChainLen) % dwProxyNum;
+		IPCLOGI(L"Round-robin chain: %d proxies connected successfully, next start index: %d", 
+			dwSuccessfulConnections, g_pPxchConfig->dwCurrentProxyIndex);
+		
+		// Save persistent state if enabled
+		if (g_pPxchConfig->dwEnablePersistentRoundRobin && g_pPxchConfig->szRoundRobinStateFile[0] != L'\0') {
+			HANDLE hFile = CreateFileW(g_pPxchConfig->szRoundRobinStateFile, GENERIC_WRITE, 0, NULL, 
+				CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+			if (hFile != INVALID_HANDLE_VALUE) {
+				char szState[64];
+				DWORD dwWritten;
+				int iLen = sprintf_s(szState, sizeof(szState), "%u\n", g_pPxchConfig->dwCurrentProxyIndex);
+				if (iLen > 0) {
+					WriteFile(hFile, szState, iLen, &dwWritten, NULL);
+				}
+				CloseHandle(hFile);
+			}
+		}
+		break;
+
+	default:
+		IPCLOGE(L"Unknown chain mode: %d", dwChainMode);
+		return SOCKET_ERROR;
+	}
+
+	return 0;
+}
+
 // Hook connect
 
 PROXY_FUNC2(Ws2_32, connect)
@@ -924,9 +1325,7 @@ PROXY_FUNC2(Ws2_32, connect)
 		goto block_end;
 	}
 
-	for (dw = 0; dw < g_pPxchConfig->dwProxyNum; dw++) {
-		if ((iReturn = Ws2_32_GenericTunnelTo(&TempData, s, &Chain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) goto record_error_end;
-	}
+	if ((iReturn = Ws2_32_LoopThroughProxyChain(&TempData, s, &Chain)) == SOCKET_ERROR) goto record_error_end;
 	if ((iReturn = Ws2_32_GenericConnectTo(&TempData, s, &Chain, pHostPortForProxiedConnection, namelen)) == SOCKET_ERROR) goto record_error_end;
 
 success_revert_connect_errcode_end:
@@ -1028,9 +1427,7 @@ PROXY_FUNC2(Mswsock, ConnectEx)
 		goto block_end;
 	}
 
-	for (dw = 0; dw < g_pPxchConfig->dwProxyNum; dw++) {
-		if ((iReturn = Ws2_32_GenericTunnelTo(&TempData, s, &Chain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) goto record_error_end;
-	}
+	if ((iReturn = Ws2_32_LoopThroughProxyChain(&TempData, s, &Chain)) == SOCKET_ERROR) goto record_error_end;
 	if ((iReturn = Ws2_32_GenericConnectTo(&TempData, s, &Chain, pHostPortForProxiedConnection, namelen)) == SOCKET_ERROR) goto record_error_end;
 
 success_set_errcode_zero_end:
@@ -1147,9 +1544,7 @@ PROXY_FUNC2(Ws2_32, WSAConnect)
 		goto block_end;
 	}
 
-	for (dw = 0; dw < g_pPxchConfig->dwProxyNum; dw++) {
-		if ((iReturn = Ws2_32_GenericTunnelTo(&TempData, s, &Chain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) goto record_error_end;
-	}
+	if ((iReturn = Ws2_32_LoopThroughProxyChain(&TempData, s, &Chain)) == SOCKET_ERROR) goto record_error_end;
 	if ((iReturn = Ws2_32_GenericConnectTo(&TempData, s, &Chain, pHostPortForProxiedConnection, namelen)) == SOCKET_ERROR) goto record_error_end;
 
 success_revert_connect_errcode_end:

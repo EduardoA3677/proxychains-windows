@@ -136,6 +136,8 @@ typedef PXCH_UINT32 PXCH_UINT_MACHINE;
 #define PXCH_PROXY_TYPE_MASK    0x000000FF
 #define PXCH_PROXY_TYPE_INVALID 0x00000000
 #define PXCH_PROXY_TYPE_SOCKS5  0x00000001
+#define PXCH_PROXY_TYPE_HTTP    0x00000002
+#define PXCH_PROXY_TYPE_SOCKS4  0x00000003
 #define PXCH_PROXY_TYPE_DIRECT  0x000000FF
 
 #define PXCH_PROXY_STATE_MASK      0x0000FF00
@@ -143,6 +145,11 @@ typedef PXCH_UINT32 PXCH_UINT_MACHINE;
 #define PXCH_PROXY_STATE_UNUSABLE  0x0000F000
 #define PXCH_PROXY_STATE_BLOCK     0x0000F100
 #define PXCH_PROXY_STATE_IDLE      0x00000100
+
+#define PXCH_CHAIN_MODE_STRICT      0x00000001
+#define PXCH_CHAIN_MODE_DYNAMIC     0x00000002
+#define PXCH_CHAIN_MODE_RANDOM      0x00000003
+#define PXCH_CHAIN_MODE_ROUND_ROBIN 0x00000004
 
 #define ProxyInit(x) *((PXCH_UINT32*)(&x)) = 0
 
@@ -285,6 +292,31 @@ typedef struct _PXCH_PROXY_SOCKS5_DATA {
 	PXCH_PASSWORD szPassword;
 } PXCH_PROXY_SOCKS5_DATA;
 
+typedef struct _PXCH_PROXY_HTTP_DATA {
+	PXCH_UINT32 dwTag;
+	// PXCH_WS2_32_FPCONNECT Ws2_32_FpConnect;
+	// PXCH_WS2_32_FPHANDSHAKE Ws2_32_FpHandshake;
+	char Ws2_32_ConnectFunctionName[PXCH_MAX_DLL_FUNC_NAME_BUFSIZE];
+	char Ws2_32_HandshakeFunctionName[PXCH_MAX_DLL_FUNC_NAME_BUFSIZE];
+	PXCH_HOST_PORT HostPort;
+	int iAddrLen;
+
+	PXCH_USERNAME szUsername;
+	PXCH_PASSWORD szPassword;
+} PXCH_PROXY_HTTP_DATA;
+
+typedef struct _PXCH_PROXY_SOCKS4_DATA {
+	PXCH_UINT32 dwTag;
+	// PXCH_WS2_32_FPCONNECT Ws2_32_FpConnect;
+	// PXCH_WS2_32_FPHANDSHAKE Ws2_32_FpHandshake;
+	char Ws2_32_ConnectFunctionName[PXCH_MAX_DLL_FUNC_NAME_BUFSIZE];
+	char Ws2_32_HandshakeFunctionName[PXCH_MAX_DLL_FUNC_NAME_BUFSIZE];
+	PXCH_HOST_PORT HostPort;
+	int iAddrLen;
+
+	PXCH_USERNAME szUserId;  // SOCKS4 uses "user ID" not username/password
+} PXCH_PROXY_SOCKS4_DATA;
+
 
 typedef union _PXCH_PROXY_DATA {
 	PXCH_UINT32 dwTag;
@@ -300,6 +332,8 @@ typedef union _PXCH_PROXY_DATA {
 	} CommonHeader;
 
 	PXCH_PROXY_SOCKS5_DATA Socks5;
+	PXCH_PROXY_SOCKS4_DATA Socks4;
+	PXCH_PROXY_HTTP_DATA Http;
 	PXCH_PROXY_DIRECT_DATA Direct;
 } PXCH_PROXY_DATA;
 
@@ -345,6 +379,10 @@ typedef struct _PROXYCHAINS_CONFIG {
 	wchar_t szHookDllPathX64[PXCH_MAX_DLL_PATH_BUFSIZE];
 	wchar_t szMinHookDllPathX86[PXCH_MAX_DLL_PATH_BUFSIZE];
 	wchar_t szMinHookDllPathX64[PXCH_MAX_DLL_PATH_BUFSIZE];
+	
+	// Per-process log file configuration
+	wchar_t szLogFilePath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+	PXCH_UINT32 dwEnablePerProcessLogFile;
 	wchar_t szHostsFilePath[PXCH_MAX_HOSTS_FILE_PATH_BUFSIZE];
 	wchar_t szCommandLine[PXCH_MAX_COMMAND_LINE_BUFSIZE];
 
@@ -415,6 +453,13 @@ typedef struct _PROXYCHAINS_CONFIG {
 
 	PXCH_UINT32 dwWillFirstTunnelUseIpv4;
 	PXCH_UINT32 dwWillFirstTunnelUseIpv6;
+
+	PXCH_UINT32 dwChainMode;
+	PXCH_UINT32 dwChainLen;
+	PXCH_UINT32 dwCurrentProxyIndex;
+	
+	WCHAR szRoundRobinStateFile[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+	PXCH_UINT32 dwEnablePersistentRoundRobin;
 } PROXYCHAINS_CONFIG;
 #pragma pack(pop)
 
@@ -458,8 +503,8 @@ static const wchar_t g_szChildDataSavingFileMappingPrefix[] = L"Local\\proxychai
 #define PXCH_HELPER_OS_DESC "win32"
 #endif
 
-#define PXCH_HELPER_X64_COMMANDLINE_SUFFIX "proxychains_helper_" PXCH_HELPER_OS_DESC "_x64" PXCH_HOOKDLL_DEBUG_SUFFIX_NARROW ".exe\" --get-winapi-func-addr 2> " PXCH_REDIRECT_NULL_FILE
-#define PXCH_HELPER_X86_COMMANDLINE_SUFFIX "proxychains_helper_" PXCH_HELPER_OS_DESC "_x86" PXCH_HOOKDLL_DEBUG_SUFFIX_NARROW ".exe\" --get-winapi-func-addr 2> " PXCH_REDIRECT_NULL_FILE
+#define PXCH_HELPER_X64_COMMANDLINE_SUFFIX "proxychains_helper_" PXCH_HELPER_OS_DESC "_x64" PXCH_HOOKDLL_DEBUG_SUFFIX_NARROW ".exe --get-winapi-func-addr 2> " PXCH_REDIRECT_NULL_FILE
+#define PXCH_HELPER_X86_COMMANDLINE_SUFFIX "proxychains_helper_" PXCH_HELPER_OS_DESC "_x86" PXCH_HOOKDLL_DEBUG_SUFFIX_NARROW ".exe --get-winapi-func-addr 2> " PXCH_REDIRECT_NULL_FILE
 
 
 #if defined(_M_X64) || defined(__x86_64__)

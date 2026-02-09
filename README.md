@@ -177,12 +177,59 @@ This version has been updated for full Windows 11 compatibility:
 
 ## Existing Features
 
-- Multiple SOCKS5 proxy chaining
-- Fake IP based remote DNS resolution
-- IPv4 and IPv6 support
-- Configurable timeout values
-- Rule-based proxy selection (IP range, domain)
-- Custom hosts file support
+- **Multiple proxy chain modes:** Strict, Dynamic (skip dead proxies), Random, Round-Robin with persistent state
+- **Multiple proxy protocols:** SOCKS5, SOCKS4/SOCKS4a, HTTP/HTTPS with CONNECT method
+- **Proxy authentication:** Username/password support for SOCKS5 and HTTP/HTTPS proxies
+- **Fake IP based remote DNS resolution:** Prevents DNS leaks
+- **IPv4 and IPv6 support:** Dual-stack networking
+- **Configurable timeout values:** Connection and handshake timeouts
+- **Rule-based proxy selection:** IP range and domain-based routing
+- **Custom hosts file support:** Override DNS resolution
+- **Environment variable expansion:** Use %USERPROFILE%, ${HOME}, etc. in configuration
+- **Per-process logging:** Separate log files for debugging multiple processes
+
+### Proxy Authentication Examples
+
+Proxychains-windows supports authentication for all proxy types:
+
+```conf
+# SOCKS5 with username/password
+socks5 proxy.example.com 1080 myuser mypassword
+
+# HTTP proxy with authentication
+http proxy.example.com 8080 username password
+
+# HTTPS proxy with authentication
+https secure-proxy.example.com 8443 user pass
+
+# SOCKS4 with user ID
+socks4 proxy.example.com 1080 userid
+
+# Mix authenticated and non-authenticated proxies
+[ProxyList]
+socks5 public-proxy.com 1080
+http auth-proxy.com 8080 user pass
+socks5 another-proxy.com 1080 user2 pass2
+```
+
+### Chain Mode Examples
+
+```conf
+# Strict chain (default) - all proxies must work
+strict_chain
+
+# Dynamic chain - skip dead proxies, use alive ones
+dynamic_chain
+
+# Random chain - select N random proxies
+random_chain
+chain_len = 2
+
+# Round-robin - rotate through proxies with persistent state
+round_robin_chain
+persistent_round_robin
+round_robin_state_file = %APPDATA%\proxychains\state.txt
+```
 
 # How It Works
 

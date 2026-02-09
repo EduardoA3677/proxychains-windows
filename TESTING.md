@@ -165,3 +165,369 @@ If you encounter issues, please report with:
 3. Full error message or log output
 4. Steps to reproduce
 5. Contents of `proxychains.conf` (with sensitive info removed)
+
+## Testing Chain Modes
+
+### Test 1: Dynamic Chain Mode
+
+Test that dynamic chain skips dead proxies:
+
+1. Edit `proxychains.conf`:
+   ```
+   #strict_chain
+   dynamic_chain
+   
+   [ProxyList]
+   socks5 127.0.0.1 9999  # Dead proxy
+   socks5 localhost 1080  # Working proxy
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds, logs show proxy 1 failed and proxy 2 succeeded
+
+### Test 2: Random Chain Mode
+
+Test that random chain selects random proxies:
+
+1. Edit `proxychains.conf`:
+   ```
+   #strict_chain
+   random_chain
+   chain_len = 2
+   
+   [ProxyList]
+   socks5 proxy1.example.com 1080
+   socks5 proxy2.example.com 1080
+   socks5 proxy3.example.com 1080
+   ```
+
+2. Run multiple connections:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Each connection uses 2 randomly selected proxies, different combinations observed
+
+### Test 3: Round-Robin Chain Mode
+
+Test that round-robin rotates through proxies:
+
+1. Edit `proxychains.conf`:
+   ```
+   #strict_chain
+   round_robin_chain
+   chain_len = 1
+   
+   [ProxyList]
+   socks5 proxy1.example.com 1080
+   socks5 proxy2.example.com 1080
+   socks5 proxy3.example.com 1080
+   ```
+
+2. Run multiple connections:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: First connection uses proxy1, second uses proxy2, third uses proxy3, then loops back
+
+### Test 4: Strict Chain Mode (Default)
+
+Test that strict chain requires all proxies to work:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   socks5 127.0.0.1 9999  # Dead proxy
+   socks5 localhost 1080  # Working proxy
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection fails because first proxy is dead
+
+### Test 5: Chain Length Configuration
+
+Test different chain lengths:
+
+1. Edit `proxychains.conf`:
+   ```
+   random_chain
+   chain_len = 3
+   
+   [ProxyList]
+   # Add 5+ proxies here
+   ```
+
+2. Check logs to verify exactly 3 proxies are used per connection
+
+### Test 6: HTTP Proxy Support
+
+Test HTTP proxy functionality:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   http proxy.example.com 8080
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds through HTTP proxy using CONNECT method
+
+### Test 7: HTTPS Proxy Support
+
+Test HTTPS proxy functionality:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   https proxy.example.com 8443
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds through HTTPS proxy
+
+### Test 8: HTTP Proxy with Authentication
+
+Test HTTP proxy with username/password:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   http proxy.example.com 8080 myuser mypass
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds with authentication
+
+### Test 9: Mixed Proxy Types
+
+Test mixing different proxy types in one chain:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   http proxy1.example.com 8080
+   socks5 proxy2.example.com 1080
+   https proxy3.example.com 8443
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection goes through all three proxies in order
+
+### Test 10: SOCKS4 Proxy Support
+
+Test SOCKS4 proxy functionality:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   socks4 proxy.example.com 1080
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds through SOCKS4 proxy
+
+### Test 11: SOCKS4a Proxy with Hostname
+
+Test SOCKS4a proxy with hostname resolution:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   socks4a proxy.example.com 1080
+   ```
+
+2. Run a test application to a hostname target:
+   ```cmd
+   proxychains.exe curl https://example.com
+   ```
+
+3. Expected result: SOCKS4a resolves hostname remotely
+
+### Test 12: SOCKS4 with User ID
+
+Test SOCKS4 proxy with user ID authentication:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   socks4 proxy.example.com 1080 myuserid
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds with user ID sent to proxy
+
+### Test 13: Mixed SOCKS Versions
+
+Test mixing different SOCKS versions:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   socks4  proxy1.example.com 1080
+   socks5  proxy2.example.com 1080
+   socks4a proxy3.example.com 1080
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection goes through all SOCKS proxies in sequence
+
+### Test 14: Persistent Round-Robin State
+
+Test that round-robin state persists across program runs:
+
+1. Edit `proxychains.conf`:
+   ```
+   round_robin_chain
+   persistent_round_robin
+   round_robin_state_file = C:\Temp\proxychains_rr_state.txt
+   
+   [ProxyList]
+   socks5 proxy1.example.com 1080
+   socks5 proxy2.example.com 1080
+   socks5 proxy3.example.com 1080
+   ```
+
+2. Run multiple times:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Check the state file:
+   ```cmd
+   type C:\Temp\proxychains_rr_state.txt
+   ```
+
+4. Expected result: 
+   - First run uses proxy1, state file shows "1"
+   - Second run uses proxy2, state file shows "2"
+   - Third run uses proxy3, state file shows "0" (wraps around)
+   - Subsequent runs continue rotation from saved state
+
+### Test 15: Per-Process Log Files
+
+Test that each process gets its own log file:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   per_process_log_file
+   log_file_path = C:\Temp\proxychains_test
+   log_level = 500
+   
+   [ProxyList]
+   socks5 localhost 1080
+   ```
+
+2. Run multiple different applications:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe ping google.com
+   proxychains.exe notepad.exe
+   ```
+
+3. Check the log files directory:
+   ```cmd
+   dir C:\Temp\proxychains_test.*.log
+   ```
+
+4. Expected result:
+   - Separate log file for each process
+   - Files named like: `proxychains_test.curl.exe.1234.log`
+   - Each file contains only logs for that specific process
+   - Files include process ID in filename for uniqueness
+
+### Test 16: Environment Variable Expansion in Configuration
+
+Test that environment variables are expanded in configuration:
+
+1. Set an environment variable:
+   ```cmd
+   set PROXY_HOST=localhost
+   set PROXY_CONFIG_DIR=%USERPROFILE%\.proxychains
+   ```
+
+2. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   log_file_path %TEMP%\proxychains_test
+   round_robin_state_file %PROXY_CONFIG_DIR%\state.txt
+   custom_hosts_file_path %PROXY_CONFIG_DIR%\hosts
+   
+   [ProxyList]
+   socks5 %PROXY_HOST% 1080
+   ```
+
+3. Note: Currently environment expansion works for file paths but not proxy hostnames
+   (proxy hostnames expansion would need additional implementation)
+
+4. Run with expanded paths:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+5. Expected result:
+   - Log file created in %TEMP% directory
+   - State file created in %USERPROFILE%\.proxychains\
+   - Paths properly expanded using current environment variables
+   - Works with both %VAR% (Windows) and ${VAR} (Unix) syntax

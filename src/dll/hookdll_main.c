@@ -24,6 +24,8 @@
 #include <MinHook.h>
 #include <Shlwapi.h>
 #include <strsafe.h>
+#include <stdlib.h>
+#include <time.h>
 #include <winternl.h>
 #include "hookdll_win32.h"
 
@@ -54,6 +56,11 @@ static const size_t g_EntryDetour_cbpReturnAddrOffsetX86 = 0x0;
 #endif // !(defined(_M_X64) || defined(__x86_64__)) || !defined(__CYGWIN__)
 
 #ifndef __CYGWIN__
+typedef struct _CLIENT_ID {
+	HANDLE UniqueProcess;
+	HANDLE UniqueThread;
+} CLIENT_ID, * PCLIENT_ID;
+
 typedef LONG KPRIORITY;
 #endif
 
@@ -719,6 +726,8 @@ PXCH_DLL_API DWORD __stdcall InitHook(PXCH_INJECT_REMOTE_DATA* pRemoteData)
 	utarray_new(g_arrHeapAllocatedPointers, &ut_ptr_icd);
 
 	ODBGSTRLOGD(L"InitHook: start");
+
+	srand((unsigned int)time(NULL));
 
 // #define PXCH_HOOK_CONDITION (g_pRemoteData->dwDebugDepth <= 3)
 #define PXCH_HOOK_CONDITION (TRUE)

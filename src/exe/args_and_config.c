@@ -33,13 +33,11 @@
 #include "log_win32.h"
 #include "hookdll_win32.h"
 #include "hookdll_util_win32.h"
-#include "embedded_resources.h"
 
 #ifndef __CYGWIN__
 #pragma comment(lib, "Shlwapi.lib")
 #pragma comment(lib, "Ws2_32.lib")
 #define popen _popen
-#define pclose _pclose
 #endif
 
 #define PXCH_CONFIG_PARSE_WHITE L" \n\t\r\v"
@@ -141,6 +139,96 @@ static inline WCHAR* ConsumeStringInSet(WCHAR* pStart, WCHAR* pEndOptional, cons
 	return p;
 }
 
+// Expand environment variables in a string
+// Supports both %VAR% (Windows) and ${VAR} (Unix) syntax
+static DWORD ExpandEnvironmentVariablesInString(WCHAR* szDest, size_t cchDest, const WCHAR* szSrc)
+{
+	size_t i, j;
+	WCHAR szVarName[256];
+	WCHAR szVarValue[1024];
+	DWORD dwVarLen;
+	const WCHAR* p;
+	BOOL bInVar = FALSE;
+	BOOL bUnixStyle = FALSE;
+	size_t iVarStart = 0;
+	size_t iVarNameLen = 0;
+
+	if (!szSrc || !szDest || cchDest == 0) {
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	j = 0;
+	for (i = 0; szSrc[i] && j < cchDest - 1; i++) {
+		if (!bInVar) {
+			// Check for start of environment variable
+			if (szSrc[i] == L'%') {
+				// Windows style %VAR%
+				bInVar = TRUE;
+				bUnixStyle = FALSE;
+				iVarStart = i + 1;
+				iVarNameLen = 0;
+			} else if (szSrc[i] == L'$' && szSrc[i + 1] == L'{') {
+				// Unix style ${VAR}
+				bInVar = TRUE;
+				bUnixStyle = TRUE;
+				iVarStart = i + 2;
+				i++; // Skip the '{'
+				iVarNameLen = 0;
+			} else {
+				szDest[j++] = szSrc[i];
+			}
+		} else {
+			// Inside a variable
+			if ((bUnixStyle && szSrc[i] == L'}') || (!bUnixStyle && szSrc[i] == L'%')) {
+				// End of variable, expand it
+				if (iVarNameLen > 0 && iVarNameLen < _countof(szVarName)) {
+					wcsncpy_s(szVarName, _countof(szVarName), &szSrc[iVarStart], iVarNameLen);
+					szVarName[iVarNameLen] = L'\0';
+
+					dwVarLen = GetEnvironmentVariableW(szVarName, szVarValue, _countof(szVarValue));
+					if (dwVarLen > 0 && dwVarLen < _countof(szVarValue)) {
+						// Successfully got environment variable
+						for (p = szVarValue; *p && j < cchDest - 1; p++) {
+							szDest[j++] = *p;
+						}
+					} else {
+						// Variable not found or too long, keep original
+						if (!bUnixStyle) szDest[j++] = L'%';
+						else {
+							szDest[j++] = L'$';
+							szDest[j++] = L'{';
+						}
+						for (size_t k = 0; k < iVarNameLen && j < cchDest - 1; k++) {
+							szDest[j++] = szSrc[iVarStart + k];
+						}
+						if (j < cchDest - 1) {
+							szDest[j++] = bUnixStyle ? L'}' : L'%';
+						}
+					}
+				}
+				bInVar = FALSE;
+			} else {
+				iVarNameLen++;
+			}
+		}
+	}
+
+	// Handle unterminated variable
+	if (bInVar) {
+		if (!bUnixStyle) szDest[j++] = L'%';
+		else {
+			szDest[j++] = L'$';
+			szDest[j++] = L'{';
+		}
+		for (size_t k = 0; k < iVarNameLen && j < cchDest - 1; k++) {
+			szDest[j++] = szSrc[iVarStart + k];
+		}
+	}
+
+	szDest[j] = L'\0';
+	return NO_ERROR;
+}
+
 static int StringToAddress(LPWSTR AddressString, LPSOCKADDR lpAddress, int iAddressLength)
 {
 	int iAddressLength2;
@@ -195,6 +283,92 @@ static int OptionGetNumberValue(long* plNum, const WCHAR* pStart, const WCHAR* p
 
 	*plNum = lResult;
 	return 0;
+}
+
+// Save round-robin state to file
+static DWORD SaveRoundRobinState(const PROXYCHAINS_CONFIG* pPxchConfig)
+{
+	HANDLE hFile;
+	DWORD dwWritten;
+	DWORD dwLastError;
+	char szState[64];
+	int iLen;
+
+	if (!pPxchConfig->dwEnablePersistentRoundRobin || pPxchConfig->szRoundRobinStateFile[0] == L'\0') {
+		return NO_ERROR;
+	}
+
+	hFile = CreateFileW(pPxchConfig->szRoundRobinStateFile, GENERIC_WRITE, 0, NULL, 
+		CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	
+	if (hFile == INVALID_HANDLE_VALUE) {
+		dwLastError = GetLastError();
+		LOGW(L"Failed to create round-robin state file: %ls", FormatErrorToStr(dwLastError));
+		return dwLastError;
+	}
+
+	iLen = sprintf_s(szState, sizeof(szState), "%u\n", pPxchConfig->dwCurrentProxyIndex);
+	if (iLen < 0) {
+		CloseHandle(hFile);
+		return ERROR_INVALID_DATA;
+	}
+
+	if (!WriteFile(hFile, szState, iLen, &dwWritten, NULL)) {
+		dwLastError = GetLastError();
+		LOGW(L"Failed to write round-robin state: %ls", FormatErrorToStr(dwLastError));
+		CloseHandle(hFile);
+		return dwLastError;
+	}
+
+	CloseHandle(hFile);
+	LOGD(L"Saved round-robin state: index=%u", pPxchConfig->dwCurrentProxyIndex);
+	return NO_ERROR;
+}
+
+// Load round-robin state from file
+static DWORD LoadRoundRobinState(PROXYCHAINS_CONFIG* pPxchConfig)
+{
+	HANDLE hFile;
+	DWORD dwRead;
+	DWORD dwLastError;
+	char szState[64];
+	unsigned int uIndex;
+
+	if (!pPxchConfig->dwEnablePersistentRoundRobin || pPxchConfig->szRoundRobinStateFile[0] == L'\0') {
+		return NO_ERROR;
+	}
+
+	hFile = CreateFileW(pPxchConfig->szRoundRobinStateFile, GENERIC_READ, FILE_SHARE_READ, 
+		NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	
+	if (hFile == INVALID_HANDLE_VALUE) {
+		dwLastError = GetLastError();
+		if (dwLastError == ERROR_FILE_NOT_FOUND) {
+			LOGD(L"Round-robin state file not found, starting from 0");
+			return NO_ERROR;
+		}
+		LOGW(L"Failed to open round-robin state file: %ls", FormatErrorToStr(dwLastError));
+		return dwLastError;
+	}
+
+	if (!ReadFile(hFile, szState, sizeof(szState) - 1, &dwRead, NULL)) {
+		dwLastError = GetLastError();
+		LOGW(L"Failed to read round-robin state: %ls", FormatErrorToStr(dwLastError));
+		CloseHandle(hFile);
+		return dwLastError;
+	}
+
+	szState[dwRead] = '\0';
+	CloseHandle(hFile);
+
+	if (sscanf_s(szState, "%u", &uIndex) == 1) {
+		pPxchConfig->dwCurrentProxyIndex = uIndex;
+		LOGD(L"Loaded round-robin state: index=%u", uIndex);
+	} else {
+		LOGW(L"Invalid round-robin state file format");
+	}
+
+	return NO_ERROR;
 }
 
 static int OptionGetStringValue(const WCHAR** ppEnd, const WCHAR* pStart, const WCHAR* pEndOptional, BOOL bAllowTrailingWhite)
@@ -565,93 +739,6 @@ void PrintConfiguration(PROXYCHAINS_CONFIG* pPxchConfig)
 	LOGD(L"PXCH_CONFIG_EXTRA_SIZE_G: " WPRDW, PXCH_CONFIG_EXTRA_SIZE_G);
 }
 
-#ifndef __CYGWIN__
-static BOOL ExtractEmbeddedDll(UINT uResourceId, const WCHAR* szOutputPath)
-{
-	HRSRC hRes;
-	HGLOBAL hResData;
-	LPVOID pData;
-	DWORD dwSize;
-	HANDLE hFile;
-	DWORD dwWritten;
-
-	hRes = FindResourceW(NULL, MAKEINTRESOURCEW(uResourceId), PXCH_EMBEDDED_DLL_TYPE);
-	if (!hRes) {
-		LOGV(L"Embedded DLL resource " WPRDW L" not found", uResourceId);
-		return FALSE;
-	}
-
-	hResData = LoadResource(NULL, hRes);
-	if (!hResData) {
-		LOGW(L"Failed to load embedded DLL resource " WPRDW, uResourceId);
-		return FALSE;
-	}
-
-	pData = LockResource(hResData);
-	dwSize = SizeofResource(NULL, hRes);
-	if (!pData || dwSize == 0) {
-		LOGW(L"Failed to access embedded DLL resource " WPRDW, uResourceId);
-		return FALSE;
-	}
-
-	hFile = CreateFileW(szOutputPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE) {
-		LOGW(L"Failed to create file for embedded DLL: %ls", szOutputPath);
-		return FALSE;
-	}
-
-	if (!WriteFile(hFile, pData, dwSize, &dwWritten, NULL) || dwWritten != dwSize) {
-		LOGW(L"Failed to write embedded DLL to: %ls", szOutputPath);
-		CloseHandle(hFile);
-		DeleteFileW(szOutputPath);
-		return FALSE;
-	}
-
-	CloseHandle(hFile);
-	LOGD(L"Extracted embedded DLL to: %ls (" WPRDW L" bytes)", szOutputPath, dwSize);
-	return TRUE;
-}
-
-static BOOL EnsureDllFromResources(PROXYCHAINS_CONFIG* pPxchConfig)
-{
-	WCHAR szTempDir[MAX_PATH];
-	WCHAR szTempPath[MAX_PATH];
-	DWORD dwRet;
-	BOOL bExtractedAny = FALSE;
-
-	dwRet = GetTempPathW(MAX_PATH, szTempDir);
-	if (dwRet == 0 || dwRet >= MAX_PATH) return FALSE;
-
-	if (FAILED(StringCchCatW(szTempDir, MAX_PATH, L"proxychains\\"))) return FALSE;
-
-	CreateDirectoryW(szTempDir, NULL);
-
-	// Extract x64 hook DLL if not found beside exe
-	if (!PathFileExistsW(pPxchConfig->szHookDllPathX64)) {
-		if (FAILED(StringCchCopyW(szTempPath, MAX_PATH, szTempDir))) return FALSE;
-		if (FAILED(StringCchCatW(szTempPath, MAX_PATH, g_szHookDllFileNameX64))) return FALSE;
-
-		if (ExtractEmbeddedDll(IDR_HOOK_DLL_X64, szTempPath)) {
-			StringCchCopyW(pPxchConfig->szHookDllPathX64, PXCH_MAX_DLL_PATH_BUFSIZE, szTempPath);
-			bExtractedAny = TRUE;
-		}
-	}
-
-	// Extract x86 hook DLL if not found beside exe
-	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) {
-		if (FAILED(StringCchCopyW(szTempPath, MAX_PATH, szTempDir))) return FALSE;
-		if (FAILED(StringCchCatW(szTempPath, MAX_PATH, g_szHookDllFileNameX86))) return FALSE;
-
-		if (ExtractEmbeddedDll(IDR_HOOK_DLL_X86, szTempPath)) {
-			StringCchCopyW(pPxchConfig->szHookDllPathX86, PXCH_MAX_DLL_PATH_BUFSIZE, szTempPath);
-			bExtractedAny = TRUE;
-		}
-	}
-
-	return bExtractedAny;
-}
-#endif
-
 DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* pTempPxchConfig)
 {
 	DWORD dwLastError;
@@ -696,8 +783,8 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	if (FAILED(StringCchCopyW(pPxchConfig->szHookDllPathX86, PXCH_MAX_DLL_PATH_BUFSIZE, pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
 	if (FAILED(StringCchCopyW(pPxchConfig->szMinHookDllPathX64, PXCH_MAX_DLL_PATH_BUFSIZE, pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
 	if (FAILED(StringCchCopyW(pPxchConfig->szMinHookDllPathX86, PXCH_MAX_DLL_PATH_BUFSIZE, pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
-	if (FAILED(StringCchPrintfA(szHelperX64CommandLine, PXCH_MAX_HELPER_PATH_BUFSIZE, "\"%ls", pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
-	if (FAILED(StringCchPrintfA(szHelperX86CommandLine, PXCH_MAX_HELPER_PATH_BUFSIZE, "\"%ls", pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
+	if (FAILED(StringCchPrintfA(szHelperX64CommandLine, PXCH_MAX_HELPER_PATH_BUFSIZE, "%ls", pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
+	if (FAILED(StringCchPrintfA(szHelperX86CommandLine, PXCH_MAX_HELPER_PATH_BUFSIZE, "%ls", pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
 
 #ifdef __CYGWIN__
 	{
@@ -716,12 +803,6 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 
 #if defined(_M_X64) || defined(__x86_64__)
 	// x64 build: Require x64 DLL, warn if x86 DLL missing (limits to 64-bit injection only)
-#ifndef __CYGWIN__
-	if (!PathFileExistsW(pPxchConfig->szHookDllPathX64) || !PathFileExistsW(pPxchConfig->szHookDllPathX86)) {
-		// Try extracting embedded DLLs from exe resources
-		EnsureDllFromResources(pPxchConfig);
-	}
-#endif
 	if (!PathFileExistsW(pPxchConfig->szHookDllPathX64)) goto err_dll_not_exist;
 	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) {
 		LOGW(L"Warning: x86 DLL not found. Will not be able to inject into 32-bit processes.");
@@ -729,12 +810,6 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	}
 #else
 	// x86 build: Only check x86 DLL (cannot inject into x64 processes anyway)
-#ifndef __CYGWIN__
-	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) {
-		// Try extracting embedded DLL from exe resources
-		EnsureDllFromResources(pPxchConfig);
-	}
-#endif
 	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) goto err_dll_not_exist;
 #endif
 	if (!PathFileExistsW(pPxchConfig->szMinHookDllPathX64)) StringCchCopyW(pPxchConfig->szMinHookDllPathX64, PXCH_MAX_DLL_PATH_BUFSIZE, g_szMinHookDllFileNameX64);
@@ -772,6 +847,14 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	pPxchConfig->dwWillUseFakeIpAsRemoteDns = FALSE;
 	pPxchConfig->dwWillGenFakeIpUsingHashedHostname = TRUE;
 
+	pPxchConfig->dwChainMode = PXCH_CHAIN_MODE_STRICT;
+	pPxchConfig->dwChainLen = 1;
+	pPxchConfig->dwCurrentProxyIndex = 0;
+	pPxchConfig->dwEnablePersistentRoundRobin = FALSE;
+	pPxchConfig->szRoundRobinStateFile[0] = L'\0';
+	pPxchConfig->dwEnablePerProcessLogFile = FALSE;
+	pPxchConfig->szLogFilePath[0] = L'\0';
+
 	// Parse configuration file
 
 	if ((dwLastError = OpenConfigurationFile(pTempPxchConfig)) != NO_ERROR) goto err_general;
@@ -792,16 +875,53 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 			bIntoProxyList = TRUE;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks5")) {
 			dwProxyNum++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4")) {
+			dwProxyNum++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4a")) {
+			dwProxyNum++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"http")) {
+			dwProxyNum++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"https")) {
+			dwProxyNum++;
 		} else if (bIntoProxyList) {
 			LOGE(L"Config line %llu: Unknown proxy: %.*ls", ullLineNum, sOptionNameEnd - sOption, sOption);
 			goto err_invalid_config;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"strict_chain")) {
+			pTempPxchConfig->dwChainMode = PXCH_CHAIN_MODE_STRICT;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"dynamic_chain")) {
+			pTempPxchConfig->dwChainMode = PXCH_CHAIN_MODE_DYNAMIC;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"random_chain")) {
-			pszParseErrorMessage = L"random_chain is not supported!";
-			goto err_invalid_config_with_msg;
+			pTempPxchConfig->dwChainMode = PXCH_CHAIN_MODE_RANDOM;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"round_robin_chain")) {
+			pTempPxchConfig->dwChainMode = PXCH_CHAIN_MODE_ROUND_ROBIN;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"chain_len")) {
-			pszParseErrorMessage = L"chain_len is not supported!";
-			goto err_invalid_config_with_msg;
+			if (OptionGetNumberValueAfterOptionName(&lValue, sOptionNameEnd, NULL, 1, 100) == -1) goto err_invalid_config_with_msg;
+			pTempPxchConfig->dwChainLen = (PXCH_UINT32)lValue;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"round_robin_state_file")) {
+			WCHAR* sPathStart;
+			WCHAR* sPathEnd;
+			
+			sPathStart = ConsumeStringInSet(sOptionNameEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sPathEnd = ConsumeStringUntilSet(sPathStart, NULL, PXCH_CONFIG_PARSE_WHITE L"#");
+			
+			if (sPathStart == sPathEnd) {
+				pszParseErrorMessage = L"round_robin_state_file path missing";
+				goto err_invalid_config_with_msg;
+			}
+			
+			// Apply environment variable expansion to round-robin state file path
+			WCHAR szTempPath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+			WCHAR szExpandedPath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+			StringCchCopyNW(szTempPath, _countof(szTempPath), sPathStart, sPathEnd - sPathStart);
+			
+			if (ExpandEnvironmentVariablesInString(szExpandedPath, _countof(szExpandedPath), szTempPath) == NO_ERROR) {
+				StringCchCopyW(pTempPxchConfig->szRoundRobinStateFile, _countof(pTempPxchConfig->szRoundRobinStateFile), szExpandedPath);
+			} else {
+				StringCchCopyNW(pTempPxchConfig->szRoundRobinStateFile, _countof(pTempPxchConfig->szRoundRobinStateFile), sPathStart, sPathEnd - sPathStart);
+			}
+			pTempPxchConfig->dwEnablePersistentRoundRobin = TRUE;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"persistent_round_robin")) {
+			pTempPxchConfig->dwEnablePersistentRoundRobin = TRUE;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"quiet_mode")) {
 			if (!pTempPxchConfig->dwLogLevelSetByArg) {
 				LOGD(L"Queit mode enabled in configuration file");
@@ -811,6 +931,30 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 			if (!pTempPxchConfig->dwLogLevelSetByArg) {
 				if (OptionGetNumberValueAfterOptionName(&lValue, sOptionNameEnd, NULL, 0, 1000) == -1) goto err_invalid_config_with_msg;
 				pPxchConfig->dwLogLevel = (DWORD)lValue;
+			}
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"per_process_log_file")) {
+			pTempPxchConfig->dwEnablePerProcessLogFile = TRUE;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"log_file_path")) {
+			WCHAR* sPathStart;
+			WCHAR* sPathEnd;
+			
+			sPathStart = ConsumeStringInSet(sOptionNameEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sPathEnd = ConsumeStringUntilSet(sPathStart, NULL, PXCH_CONFIG_PARSE_WHITE L"#");
+			
+			if (sPathStart == sPathEnd) {
+				pszParseErrorMessage = L"log_file_path missing";
+				goto err_invalid_config_with_msg;
+			}
+			
+			// Apply environment variable expansion to log file path
+			WCHAR szTempPath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+			WCHAR szExpandedPath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+			StringCchCopyNW(szTempPath, _countof(szTempPath), sPathStart, sPathEnd - sPathStart);
+			
+			if (ExpandEnvironmentVariablesInString(szExpandedPath, _countof(szExpandedPath), szTempPath) == NO_ERROR) {
+				StringCchCopyW(pTempPxchConfig->szLogFilePath, _countof(pTempPxchConfig->szLogFilePath), szExpandedPath);
+			} else {
+				StringCchCopyNW(pTempPxchConfig->szLogFilePath, _countof(pTempPxchConfig->szLogFilePath), sPathStart, sPathEnd - sPathStart);
 			}
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"proxy_dns")) {
 			pTempPxchConfig->dwWillUseFakeIpAsRemoteDns = TRUE;
@@ -899,8 +1043,21 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"custom_hosts_file_path")) {
 			const WCHAR* pPathStart;
 			const WCHAR* pPathEnd;
+			WCHAR szTempPath[PXCH_MAX_HOSTS_FILE_PATH_BUFSIZE];
+			WCHAR szExpandedPath[PXCH_MAX_HOSTS_FILE_PATH_BUFSIZE];
+			
 			if (OptionGetStringValueAfterOptionName(&pPathStart, &pPathEnd, sOptionNameEnd, NULL) == -1) goto err_invalid_config_with_msg;
-			if (FAILED(StringCchCopyNW(pPxchConfig->szHostsFilePath, _countof(pPxchConfig->szHostsFilePath), pPathStart, pPathEnd - pPathStart))) goto err_insuf_buf;
+			
+			// Copy to temporary buffer
+			if (FAILED(StringCchCopyNW(szTempPath, _countof(szTempPath), pPathStart, pPathEnd - pPathStart))) goto err_insuf_buf;
+			
+			// Apply environment variable expansion
+			if (ExpandEnvironmentVariablesInString(szExpandedPath, _countof(szExpandedPath), szTempPath) == NO_ERROR) {
+				if (FAILED(StringCchCopyW(pPxchConfig->szHostsFilePath, _countof(pPxchConfig->szHostsFilePath), szExpandedPath))) goto err_insuf_buf;
+			} else {
+				// Fall back to original if expansion fails
+				if (FAILED(StringCchCopyNW(pPxchConfig->szHostsFilePath, _countof(pPxchConfig->szHostsFilePath), pPathStart, pPathEnd - pPathStart))) goto err_insuf_buf;
+			}
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"default_target")) {
 			const WCHAR* pTargetStart;
 			const WCHAR* pTargetEnd;
@@ -1069,6 +1226,141 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 			StringCchCopyA(pSocks5->Ws2_32_ConnectFunctionName, _countof(pSocks5->Ws2_32_ConnectFunctionName), "Ws2_32_Socks5Connect");
 			StringCchCopyA(pSocks5->Ws2_32_HandshakeFunctionName, _countof(pSocks5->Ws2_32_HandshakeFunctionName), "Ws2_32_Socks5Handshake");
 			pSocks5->iAddrLen = sizeof(PXCH_HOST_PORT);
+			dwProxyCounter++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"http") || WSTR_EQUAL(sOption, sOptionNameEnd, L"https")) {
+			WCHAR* sHostStart;
+			WCHAR* sHostEnd;
+			WCHAR* sPortStart;
+			WCHAR* sPortEnd;
+			WCHAR* sUserPassStart;
+			WCHAR* sUserPassEnd;
+			long lPort;
+			BOOL bIsHttps = WSTR_EQUAL(sOption, sOptionNameEnd, L"https");
+
+			PXCH_PROXY_HTTP_DATA* pHttp = &PXCH_CONFIG_PROXY_ARR(pPxchConfig)[dwProxyCounter].Http;
+
+			pHttp->dwTag = PXCH_PROXY_TYPE_HTTP;
+
+			sHostStart = ConsumeStringInSet(sOptionNameEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sHostEnd = ConsumeStringUntilSet(sHostStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sHostStart == sHostEnd) {
+				pszParseErrorMessage = bIsHttps ? L"HTTPS proxy server host missing" : L"HTTP proxy server host missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetIpPortValue((PXCH_IP_PORT*)&pHttp->HostPort, NULL, sHostStart, sHostEnd, FALSE, TRUE) == 0) {
+				if (PXCH_CONFIG_PROXY_ARR(pPxchConfig)[dwProxyCounter].Http.HostPort.CommonHeader.wPort != 0) {
+					pszParseErrorMessage = bIsHttps ? L"HTTPS proxy server host address should not have port" : L"HTTP proxy server host address should not have port";
+					goto err_invalid_config_with_msg;
+				}
+			} else {
+				pHttp->HostPort.HostnamePort.wTag = PXCH_HOST_TYPE_HOSTNAME;
+				StringCchCopyNW(pHttp->HostPort.HostnamePort.szValue, _countof(pHttp->HostPort.HostnamePort.szValue), sHostStart, sHostEnd - sHostStart);
+			}
+
+			sPortStart = ConsumeStringInSet(sHostEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sPortEnd = ConsumeStringUntilSet(sPortStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sPortStart == sPortEnd) {
+				pszParseErrorMessage = bIsHttps ? L"HTTPS proxy server port missing" : L"HTTP proxy server port missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetNumberValue(&lPort, sPortStart, sPortEnd, 1, 65535, TRUE)) {
+				goto err_invalid_config_with_msg;
+			}
+
+			pHttp->HostPort.CommonHeader.wPort = ntohs((PXCH_UINT16)lPort);
+
+			sUserPassStart = ConsumeStringInSet(sPortEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sUserPassEnd = ConsumeStringUntilSet(sUserPassStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (*sUserPassStart == L'\0' || sUserPassStart == sUserPassEnd) goto http_end;
+
+			StringCchPrintfA(pHttp->szUsername, _countof(pHttp->szUsername), "%.*ls", sUserPassEnd - sUserPassStart, sUserPassStart);
+
+			sUserPassStart = ConsumeStringInSet(sUserPassEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sUserPassEnd = ConsumeStringUntilSet(sUserPassStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+			if (*sUserPassStart == L'\0' || sUserPassStart == sUserPassEnd) {
+				pszParseErrorMessage = bIsHttps ? L"HTTPS proxy password missing" : L"HTTP proxy password missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			StringCchPrintfA(pHttp->szPassword, _countof(pHttp->szPassword), "%.*ls", sUserPassEnd - sUserPassStart, sUserPassStart);
+				
+			if (*ConsumeStringInSet(sUserPassEnd, NULL, PXCH_CONFIG_PARSE_WHITE) != L'\0') {
+				pszParseErrorMessage = bIsHttps ? L"Extra character after https proxy definition" : L"Extra character after http proxy definition";
+				goto err_invalid_config_with_msg;
+			}
+
+		http_end:
+			StringCchCopyA(pHttp->Ws2_32_ConnectFunctionName, _countof(pHttp->Ws2_32_ConnectFunctionName), "Ws2_32_HttpConnect");
+			StringCchCopyA(pHttp->Ws2_32_HandshakeFunctionName, _countof(pHttp->Ws2_32_HandshakeFunctionName), "Ws2_32_HttpHandshake");
+			pHttp->iAddrLen = sizeof(PXCH_HOST_PORT);
+			dwProxyCounter++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4") || WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4a")) {
+			WCHAR* sHostStart;
+			WCHAR* sHostEnd;
+			WCHAR* sPortStart;
+			WCHAR* sPortEnd;
+			WCHAR* sUserIdStart;
+			WCHAR* sUserIdEnd;
+			long lPort;
+			BOOL bIsSocks4a = WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4a");
+
+			PXCH_PROXY_SOCKS4_DATA* pSocks4 = &PXCH_CONFIG_PROXY_ARR(pPxchConfig)[dwProxyCounter].Socks4;
+
+			pSocks4->dwTag = PXCH_PROXY_TYPE_SOCKS4;
+
+			sHostStart = ConsumeStringInSet(sOptionNameEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sHostEnd = ConsumeStringUntilSet(sHostStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sHostStart == sHostEnd) {
+				pszParseErrorMessage = bIsSocks4a ? L"SOCKS4A server host missing" : L"SOCKS4 server host missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetIpPortValue((PXCH_IP_PORT*)&pSocks4->HostPort, NULL, sHostStart, sHostEnd, FALSE, TRUE) == 0) {
+				if (PXCH_CONFIG_PROXY_ARR(pPxchConfig)[dwProxyCounter].Socks4.HostPort.CommonHeader.wPort != 0) {
+					pszParseErrorMessage = bIsSocks4a ? L"SOCKS4A server host address should not have port" : L"SOCKS4 server host address should not have port";
+					goto err_invalid_config_with_msg;
+				}
+			} else {
+				pSocks4->HostPort.HostnamePort.wTag = PXCH_HOST_TYPE_HOSTNAME;
+				StringCchCopyNW(pSocks4->HostPort.HostnamePort.szValue, _countof(pSocks4->HostPort.HostnamePort.szValue), sHostStart, sHostEnd - sHostStart);
+			}
+
+			sPortStart = ConsumeStringInSet(sHostEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sPortEnd = ConsumeStringUntilSet(sPortStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sPortStart == sPortEnd) {
+				pszParseErrorMessage = bIsSocks4a ? L"SOCKS4A server port missing" : L"SOCKS4 server port missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetNumberValue(&lPort, sPortStart, sPortEnd, 1, 65535, TRUE)) {
+				goto err_invalid_config_with_msg;
+			}
+
+			pSocks4->HostPort.CommonHeader.wPort = ntohs((PXCH_UINT16)lPort);
+
+			sUserIdStart = ConsumeStringInSet(sPortEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sUserIdEnd = ConsumeStringUntilSet(sUserIdStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (*sUserIdStart == L'\0' || sUserIdStart == sUserIdEnd) goto socks4_end;
+
+			StringCchPrintfA(pSocks4->szUserId, _countof(pSocks4->szUserId), "%.*ls", sUserIdEnd - sUserIdStart, sUserIdStart);
+				
+			if (*ConsumeStringInSet(sUserIdEnd, NULL, PXCH_CONFIG_PARSE_WHITE) != L'\0') {
+				pszParseErrorMessage = bIsSocks4a ? L"Extra character after socks4a server definition" : L"Extra character after socks4 server definition";
+				goto err_invalid_config_with_msg;
+			}
+
+		socks4_end:
+			StringCchCopyA(pSocks4->Ws2_32_ConnectFunctionName, _countof(pSocks4->Ws2_32_ConnectFunctionName), "Ws2_32_Socks4Connect");
+			StringCchCopyA(pSocks4->Ws2_32_HandshakeFunctionName, _countof(pSocks4->Ws2_32_HandshakeFunctionName), "Ws2_32_Socks4Handshake");
+			pSocks4->iAddrLen = sizeof(PXCH_HOST_PORT);
 			dwProxyCounter++;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"localnet")) {
 			PXCH_RULE* pRule = &PXCH_CONFIG_RULE_ARR(pPxchConfig)[dwRuleCounter];
@@ -1266,7 +1558,6 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 
 		if (fHelperProcOut == NULL) {
 			LOGW(L"Warning: X86 Helper executable " WPRS L" not found. In this case proxychains.exe will not inject X86 descendant processes.", szHelperX86CommandLine);
-			LOGW(L"Ensure proxychains_helper_win32_x86.exe is in the same directory as proxychains.exe.");
 		} else {
 			unsigned long long tmp;
 			int i;
@@ -1312,7 +1603,6 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 				default: bStop = TRUE; break;
 				}
 			}
-			pclose(fHelperProcOut);
 		}
 	}
 #endif
@@ -1330,6 +1620,9 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	PRINT_FUNC_ADDR_OF_BOTH_ARCH(pPxchConfig, ReleaseSemaphore   );
 	PRINT_FUNC_ADDR_OF_BOTH_ARCH(pPxchConfig, CloseHandle        );
 	PRINT_FUNC_ADDR_OF_BOTH_ARCH(pPxchConfig, WaitForSingleObject);
+
+	// Load persistent round-robin state if enabled
+	LoadRoundRobinState(pPxchConfig);
 
 	return NO_ERROR;
 

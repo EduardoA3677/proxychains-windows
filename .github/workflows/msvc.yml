@@ -18,12 +18,12 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
       
-    - name: Build x86
-      run: msbuild proxychains.exe.sln /p:Configuration=Release /p:Platform=x86 /p:PlatformToolset=v142 /p:WindowsTargetPlatformVersion=10.0
+    - name: Build x64
+      run: msbuild proxychains.exe.sln /p:Configuration=Release /p:Platform=x64
       shell: cmd
-
-    - name: Build x64 (with embedded DLLs)
-      run: msbuild proxychains.exe.sln /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v142 /p:WindowsTargetPlatformVersion=10.0 /p:EmbedDlls=true
+      
+    - name: Build x86
+      run: msbuild proxychains.exe.sln /p:Configuration=Release /p:Platform=x86
       shell: cmd
     
     - name: Prepare release package
@@ -32,8 +32,6 @@ jobs:
         copy win32_output\proxychains_win32_x64.exe release-package\proxychains.exe
         copy win32_output\proxychains_hook_x64.dll release-package\
         copy win32_output\proxychains_hook_x86.dll release-package\
-        copy win32_output\proxychains_helper_win32_x86.exe release-package\
-        copy win32_output\proxychains_helper_win32_x64.exe release-package\
         if exist win32_output\MinHook.x64.dll copy win32_output\MinHook.x64.dll release-package\
         if exist win32_output\MinHook.x86.dll copy win32_output\MinHook.x86.dll release-package\
         copy proxychains.conf release-package\
