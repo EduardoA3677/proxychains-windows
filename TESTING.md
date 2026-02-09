@@ -165,3 +165,111 @@ If you encounter issues, please report with:
 3. Full error message or log output
 4. Steps to reproduce
 5. Contents of `proxychains.conf` (with sensitive info removed)
+
+## Testing Chain Modes
+
+### Test 1: Dynamic Chain Mode
+
+Test that dynamic chain skips dead proxies:
+
+1. Edit `proxychains.conf`:
+   ```
+   #strict_chain
+   dynamic_chain
+   
+   [ProxyList]
+   socks5 127.0.0.1 9999  # Dead proxy
+   socks5 localhost 1080  # Working proxy
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds, logs show proxy 1 failed and proxy 2 succeeded
+
+### Test 2: Random Chain Mode
+
+Test that random chain selects random proxies:
+
+1. Edit `proxychains.conf`:
+   ```
+   #strict_chain
+   random_chain
+   chain_len = 2
+   
+   [ProxyList]
+   socks5 proxy1.example.com 1080
+   socks5 proxy2.example.com 1080
+   socks5 proxy3.example.com 1080
+   ```
+
+2. Run multiple connections:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Each connection uses 2 randomly selected proxies, different combinations observed
+
+### Test 3: Round-Robin Chain Mode
+
+Test that round-robin rotates through proxies:
+
+1. Edit `proxychains.conf`:
+   ```
+   #strict_chain
+   round_robin_chain
+   chain_len = 1
+   
+   [ProxyList]
+   socks5 proxy1.example.com 1080
+   socks5 proxy2.example.com 1080
+   socks5 proxy3.example.com 1080
+   ```
+
+2. Run multiple connections:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: First connection uses proxy1, second uses proxy2, third uses proxy3, then loops back
+
+### Test 4: Strict Chain Mode (Default)
+
+Test that strict chain requires all proxies to work:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   socks5 127.0.0.1 9999  # Dead proxy
+   socks5 localhost 1080  # Working proxy
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection fails because first proxy is dead
+
+### Test 5: Chain Length Configuration
+
+Test different chain lengths:
+
+1. Edit `proxychains.conf`:
+   ```
+   random_chain
+   chain_len = 3
+   
+   [ProxyList]
+   # Add 5+ proxies here
+   ```
+
+2. Check logs to verify exactly 3 proxies are used per connection

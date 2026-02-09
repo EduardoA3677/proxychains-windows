@@ -144,6 +144,11 @@ typedef PXCH_UINT32 PXCH_UINT_MACHINE;
 #define PXCH_PROXY_STATE_BLOCK     0x0000F100
 #define PXCH_PROXY_STATE_IDLE      0x00000100
 
+#define PXCH_CHAIN_MODE_STRICT      0x00000001
+#define PXCH_CHAIN_MODE_DYNAMIC     0x00000002
+#define PXCH_CHAIN_MODE_RANDOM      0x00000003
+#define PXCH_CHAIN_MODE_ROUND_ROBIN 0x00000004
+
 #define ProxyInit(x) *((PXCH_UINT32*)(&x)) = 0
 
 #define ProxyIsType(type, x) (((x).dwTag & PXCH_PROXY_TYPE_MASK) == PXCH_PROXY_TYPE_##type)
@@ -415,6 +420,10 @@ typedef struct _PROXYCHAINS_CONFIG {
 
 	PXCH_UINT32 dwWillFirstTunnelUseIpv4;
 	PXCH_UINT32 dwWillFirstTunnelUseIpv6;
+
+	PXCH_UINT32 dwChainMode;
+	PXCH_UINT32 dwChainLen;
+	PXCH_UINT32 dwCurrentProxyIndex;
 } PROXYCHAINS_CONFIG;
 #pragma pack(pop)
 

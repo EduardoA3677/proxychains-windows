@@ -2,6 +2,49 @@
 
 All notable changes to proxychains-windows will be documented in this file.
 
+## [Unreleased] - Multiple Chain Modes Support
+
+### Added
+- **Dynamic Chain Mode**: Skip dead proxies and continue with alive ones
+- **Random Chain Mode**: Select random proxies from the list for each connection
+- **Round-Robin Chain Mode**: Rotate through proxies in a round-robin fashion
+- **Chain Length Configuration**: `chain_len` option to specify number of proxies in random/round-robin modes
+- **Enhanced Logging**: Chain mode operations now logged with detailed information
+- **Configuration Options**:
+  - `dynamic_chain` - Enable dynamic chain mode with automatic failover
+  - `random_chain` - Enable random proxy selection
+  - `round_robin_chain` - Enable round-robin proxy rotation
+  - `chain_len` - Configure chain length for random/round-robin modes (default: 1)
+
+### Changed
+- **Proxy Chain Logic**: Refactored proxy connection loop into `Ws2_32_LoopThroughProxyChain()` function
+- **Configuration Defaults**: Chain mode defaults to strict chain for backward compatibility
+- **Error Handling**: Dynamic mode continues on proxy failures instead of aborting
+
+### Improved
+- **Reliability**: Dynamic chain mode provides better fault tolerance
+- **Load Balancing**: Round-robin mode distributes load across proxies
+- **Testing**: Random mode useful for testing and avoiding detection
+- **Documentation**: Updated proxychains.conf with detailed chain mode descriptions
+
+### Technical Details
+
+#### Core Changes
+- Added chain mode constants in `defines_generic.h`: 
+  - `PXCH_CHAIN_MODE_STRICT` (default)
+  - `PXCH_CHAIN_MODE_DYNAMIC`
+  - `PXCH_CHAIN_MODE_RANDOM`
+  - `PXCH_CHAIN_MODE_ROUND_ROBIN`
+- Extended `PROXYCHAINS_CONFIG` structure with chain mode fields
+- Implemented chain mode selection logic in `hook_connect_win32.c`
+- Added configuration parsing in `args_and_config.c`
+- Initialized random seed for random chain mode
+
+#### Compatibility
+- Maintains full backward compatibility with existing configurations
+- Default behavior unchanged (strict chain mode)
+- Works with all existing proxy configurations
+
 ## [Unreleased] - Cross-Architecture Support and Windows 11 Improvements
 
 ### Added

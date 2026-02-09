@@ -27,6 +27,7 @@
 #include <Mswsock.h>
 #include <Shlwapi.h>
 #include <stdlib.h>
+#include <time.h>
 #include <strsafe.h>
 #include "hookdll_util_win32.h"
 #include "log_generic.h"
@@ -878,6 +879,98 @@ err_return:
 	return iReturn;
 }
 
+static int Ws2_32_LoopThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PPXCH_CHAIN pChain)
+{
+	PXCH_UINT32 dw;
+	int iReturn;
+	PXCH_UINT32 dwChainMode = g_pPxchConfig->dwChainMode;
+	PXCH_UINT32 dwProxyNum = g_pPxchConfig->dwProxyNum;
+	PXCH_UINT32 dwChainLen;
+	PXCH_UINT32 dwStartIndex;
+	PXCH_UINT32 dwSuccessfulConnections = 0;
+
+	if (dwProxyNum == 0) {
+		IPCLOGW(L"No proxies configured in chain");
+		return SOCKET_ERROR;
+	}
+
+	switch (dwChainMode) {
+	case PXCH_CHAIN_MODE_STRICT:
+		IPCLOGD(L"Using strict chain mode - all proxies must succeed");
+		for (dw = 0; dw < dwProxyNum; dw++) {
+			IPCLOGD(L"Connecting through proxy %d/%d", dw + 1, dwProxyNum);
+			if ((iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) {
+				IPCLOGW(L"Proxy %d/%d failed in strict chain mode", dw + 1, dwProxyNum);
+				return SOCKET_ERROR;
+			}
+			dwSuccessfulConnections++;
+		}
+		IPCLOGI(L"Strict chain: all %d proxies connected successfully", dwSuccessfulConnections);
+		break;
+
+	case PXCH_CHAIN_MODE_DYNAMIC:
+		IPCLOGD(L"Using dynamic chain mode - dead proxies will be skipped");
+		for (dw = 0; dw < dwProxyNum; dw++) {
+			IPCLOGD(L"Attempting proxy %d/%d", dw + 1, dwProxyNum);
+			if ((iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) {
+				IPCLOGW(L"Proxy %d/%d failed, skipping to next (dynamic mode)", dw + 1, dwProxyNum);
+				continue;
+			}
+			dwSuccessfulConnections++;
+		}
+		if (dwSuccessfulConnections == 0) {
+			IPCLOGE(L"Dynamic chain: all proxies failed");
+			return SOCKET_ERROR;
+		}
+		IPCLOGI(L"Dynamic chain: %d/%d proxies connected successfully", dwSuccessfulConnections, dwProxyNum);
+		break;
+
+	case PXCH_CHAIN_MODE_RANDOM:
+		dwChainLen = g_pPxchConfig->dwChainLen;
+		if (dwChainLen > dwProxyNum) dwChainLen = dwProxyNum;
+		IPCLOGD(L"Using random chain mode - chain length: %d", dwChainLen);
+		
+		for (dw = 0; dw < dwChainLen; dw++) {
+			PXCH_UINT32 dwRandomIndex = rand() % dwProxyNum;
+			IPCLOGD(L"Random chain: connecting through proxy %d (index %d)", dw + 1, dwRandomIndex);
+			if ((iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dwRandomIndex])) == SOCKET_ERROR) {
+				IPCLOGW(L"Random chain: proxy at index %d failed", dwRandomIndex);
+				return SOCKET_ERROR;
+			}
+			dwSuccessfulConnections++;
+		}
+		IPCLOGI(L"Random chain: %d proxies connected successfully", dwSuccessfulConnections);
+		break;
+
+	case PXCH_CHAIN_MODE_ROUND_ROBIN:
+		dwChainLen = g_pPxchConfig->dwChainLen;
+		if (dwChainLen > dwProxyNum) dwChainLen = dwProxyNum;
+		dwStartIndex = g_pPxchConfig->dwCurrentProxyIndex % dwProxyNum;
+		IPCLOGD(L"Using round-robin chain mode - starting at index %d, chain length: %d", dwStartIndex, dwChainLen);
+		
+		for (dw = 0; dw < dwChainLen; dw++) {
+			PXCH_UINT32 dwProxyIndex = (dwStartIndex + dw) % dwProxyNum;
+			IPCLOGD(L"Round-robin: connecting through proxy %d (index %d)", dw + 1, dwProxyIndex);
+			if ((iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dwProxyIndex])) == SOCKET_ERROR) {
+				IPCLOGW(L"Round-robin: proxy at index %d failed", dwProxyIndex);
+				return SOCKET_ERROR;
+			}
+			dwSuccessfulConnections++;
+		}
+		
+		g_pPxchConfig->dwCurrentProxyIndex = (dwStartIndex + dwChainLen) % dwProxyNum;
+		IPCLOGI(L"Round-robin chain: %d proxies connected successfully, next start index: %d", 
+			dwSuccessfulConnections, g_pPxchConfig->dwCurrentProxyIndex);
+		break;
+
+	default:
+		IPCLOGE(L"Unknown chain mode: %d", dwChainMode);
+		return SOCKET_ERROR;
+	}
+
+	return 0;
+}
+
 // Hook connect
 
 PROXY_FUNC2(Ws2_32, connect)
@@ -924,9 +1017,7 @@ PROXY_FUNC2(Ws2_32, connect)
 		goto block_end;
 	}
 
-	for (dw = 0; dw < g_pPxchConfig->dwProxyNum; dw++) {
-		if ((iReturn = Ws2_32_GenericTunnelTo(&TempData, s, &Chain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) goto record_error_end;
-	}
+	if ((iReturn = Ws2_32_LoopThroughProxyChain(&TempData, s, &Chain)) == SOCKET_ERROR) goto record_error_end;
 	if ((iReturn = Ws2_32_GenericConnectTo(&TempData, s, &Chain, pHostPortForProxiedConnection, namelen)) == SOCKET_ERROR) goto record_error_end;
 
 success_revert_connect_errcode_end:
@@ -1028,9 +1119,7 @@ PROXY_FUNC2(Mswsock, ConnectEx)
 		goto block_end;
 	}
 
-	for (dw = 0; dw < g_pPxchConfig->dwProxyNum; dw++) {
-		if ((iReturn = Ws2_32_GenericTunnelTo(&TempData, s, &Chain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) goto record_error_end;
-	}
+	if ((iReturn = Ws2_32_LoopThroughProxyChain(&TempData, s, &Chain)) == SOCKET_ERROR) goto record_error_end;
 	if ((iReturn = Ws2_32_GenericConnectTo(&TempData, s, &Chain, pHostPortForProxiedConnection, namelen)) == SOCKET_ERROR) goto record_error_end;
 
 success_set_errcode_zero_end:
@@ -1147,9 +1236,7 @@ PROXY_FUNC2(Ws2_32, WSAConnect)
 		goto block_end;
 	}
 
-	for (dw = 0; dw < g_pPxchConfig->dwProxyNum; dw++) {
-		if ((iReturn = Ws2_32_GenericTunnelTo(&TempData, s, &Chain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) goto record_error_end;
-	}
+	if ((iReturn = Ws2_32_LoopThroughProxyChain(&TempData, s, &Chain)) == SOCKET_ERROR) goto record_error_end;
 	if ((iReturn = Ws2_32_GenericConnectTo(&TempData, s, &Chain, pHostPortForProxiedConnection, namelen)) == SOCKET_ERROR) goto record_error_end;
 
 success_revert_connect_errcode_end:

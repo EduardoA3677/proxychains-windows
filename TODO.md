@@ -3,28 +3,28 @@
 ## High Priority Features
 
 ### Dynamic Chain Support
-- [ ] Implement dynamic chain mode (skip dead proxies)
-- [ ] Add proxy health checking mechanism
-- [ ] Implement automatic proxy failover
-- [ ] Add timeout-based proxy detection
-- **Status**: Not implemented (currently only strict chain is supported)
+- [x] Implement dynamic chain mode (skip dead proxies)
+- [x] Add proxy health checking mechanism
+- [x] Implement automatic proxy failover
+- [x] Add timeout-based proxy detection
+- **Status**: Implemented
 - **Difficulty**: Medium
 - **Impact**: High - Better reliability when proxies fail
 
 ### Round Robin Chain Support
-- [ ] Implement round-robin proxy selection
-- [ ] Add chain length configuration support
-- [ ] Thread-safe proxy rotation
+- [x] Implement round-robin proxy selection
+- [x] Add chain length configuration support
+- [x] Thread-safe proxy rotation
 - [ ] Persistent state for proxy rotation across processes
-- **Status**: Not implemented
+- **Status**: Implemented (except persistent state)
 - **Difficulty**: Medium
 - **Impact**: Medium - Load balancing across proxies
 
 ### Random Chain Support
-- [ ] Implement random proxy selection
-- [ ] Configurable chain length
-- [ ] Random seed configuration
-- **Status**: Not implemented
+- [x] Implement random proxy selection
+- [x] Configurable chain length
+- [x] Random seed configuration
+- **Status**: Implemented
 - **Difficulty**: Low
 - **Impact**: Low - Useful for testing
 
