@@ -23,6 +23,8 @@ All notable changes to proxychains-windows will be documented in this file.
   - New "Key Features and Improvements" section in README
   - Updated Install section with unified binary instructions
   - New TESTING.md guide for testing cross-architecture support
+  - New CONTRIBUTING.md with developer guidelines, architecture overview, and coding standards
+  - Inline documentation added to key functions in hook_connect_win32.c
 - **CI/CD Improvements**: GitHub Actions workflow now builds both x86 and x64 versions
 
 ### Changed

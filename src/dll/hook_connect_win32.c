@@ -345,6 +345,8 @@ void PrintConnectResultAndFreeResources(const WCHAR* szPrintPrefix, PXCH_UINT_PT
 	}
 }
 
+// Call original connect() without blocking semantics.
+// Used for direct connections that bypass the proxy chain.
 int Ws2_32_OriginalConnect(void* pTempData, PXCH_UINT_PTR s, const void* pAddr, int iAddrLen)
 {
 	int iReturn;
@@ -367,6 +369,8 @@ int Ws2_32_OriginalConnect(void* pTempData, PXCH_UINT_PTR s, const void* pAddr, 
 	return iReturn;
 }
 
+// Connect to a proxy server, handling non-blocking sockets by using select() with timeout.
+// Returns 0 on success, SOCKET_ERROR on failure (timeout, connection error, etc.)
 int Ws2_32_BlockConnect(void* pTempData, PXCH_UINT_PTR s, const void* pAddr, int iAddrLen)
 {
 	int iReturn;
@@ -438,6 +442,8 @@ err_return:
 	return SOCKET_ERROR;
 }
 
+// Send all bytes in buffer, retrying until complete or error.
+// Used for proxy handshake and CONNECT request data.
 int Ws2_32_LoopSend(void* pTempData, PXCH_UINT_PTR s, const char* SendBuf, int iLength)
 {
 	int iReturn;
@@ -505,6 +511,8 @@ err_return:
 	return SOCKET_ERROR;
 }
 
+// Receive exactly iLength bytes, using select() with timeout for non-blocking sockets.
+// Returns 0 on success, SOCKET_ERROR on failure (timeout, connection closed, etc.)
 int Ws2_32_LoopRecv(void* pTempData, PXCH_UINT_PTR s, char* RecvBuf, int iLength)
 {
 	int iReturn;
@@ -1034,6 +1042,8 @@ err_return:
 	return iReturn;
 }
 
+// Connect to a target host through the current chain, using the last proxy's
+// Connect function. If the chain is empty, performs a direct connection.
 int Ws2_32_GenericConnectTo(void* pTempData, PXCH_UINT_PTR s, PPXCH_CHAIN pChain, const PXCH_HOST_PORT* pHostPort, int iAddrLen)
 {
 	int iReturn;
@@ -1066,6 +1076,8 @@ int Ws2_32_GenericConnectTo(void* pTempData, PXCH_UINT_PTR s, PPXCH_CHAIN pChain
 	return iReturn;
 }
 
+// Tunnel to a specific proxy: connect to it, perform handshake, and add it to the chain.
+// Returns 0 on success, SOCKET_ERROR on failure.
 int Ws2_32_GenericTunnelTo(void* pTempData, PXCH_UINT_PTR s, PPXCH_CHAIN pChain, PXCH_PROXY_DATA* pProxy)
 {
 	DWORD dwLastError;
@@ -1107,6 +1119,11 @@ err_return:
 	return iReturn;
 }
 
+// Route a connection through the configured proxy chain based on the chain mode:
+// - STRICT: All proxies used in order; any failure aborts the chain
+// - DYNAMIC: All proxies attempted in order; dead proxies are skipped
+// - RANDOM: chain_len random proxies selected; any failure aborts
+// - ROUND_ROBIN: chain_len proxies selected starting from a rotating index
 static int TunnelThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PXCH_CHAIN* pChain)
 {
 	int iReturn;
