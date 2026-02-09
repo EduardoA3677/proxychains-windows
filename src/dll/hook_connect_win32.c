@@ -898,7 +898,7 @@ static int TunnelThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PXCH_CHAIN*
 			dwAliveCount++;
 		}
 
-		if (dwAliveCount == 0) {
+		if (dwProxyNum > 0 && dwAliveCount == 0) {
 			FUNCIPCLOGE(L"Dynamic chain: all proxies failed!");
 			return SOCKET_ERROR;
 		}
