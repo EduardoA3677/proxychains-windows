@@ -1,0 +1,236 @@
+# TODO List - Proxychains-Windows Features & Improvements
+
+## High Priority Features
+
+### Dynamic Chain Support
+- [ ] Implement dynamic chain mode (skip dead proxies)
+- [ ] Add proxy health checking mechanism
+- [ ] Implement automatic proxy failover
+- [ ] Add timeout-based proxy detection
+- **Status**: Not implemented (currently only strict chain is supported)
+- **Difficulty**: Medium
+- **Impact**: High - Better reliability when proxies fail
+
+### Round Robin Chain Support
+- [ ] Implement round-robin proxy selection
+- [ ] Add chain length configuration support
+- [ ] Thread-safe proxy rotation
+- [ ] Persistent state for proxy rotation across processes
+- **Status**: Not implemented
+- **Difficulty**: Medium
+- **Impact**: Medium - Load balancing across proxies
+
+### Random Chain Support
+- [ ] Implement random proxy selection
+- [ ] Configurable chain length
+- [ ] Random seed configuration
+- **Status**: Not implemented
+- **Difficulty**: Low
+- **Impact**: Low - Useful for testing
+
+### UDP Associate Support
+- [ ] Implement SOCKS5 UDP associate for DNS
+- [ ] UDP packet forwarding through proxy
+- [ ] DNS queries via UDP associate
+- **Status**: Not implemented (marked as "NOT SUPPORTED" in config)
+- **Difficulty**: High
+- **Impact**: High - Prevent DNS leaks better
+
+## Medium Priority Features
+
+### Configuration Improvements
+- [ ] Support for HTTP/HTTPS proxy (currently SOCKS5 only)
+- [ ] Support for SOCKS4/SOCKS4a proxies
+- [ ] Multiple configuration file profiles
+- [ ] Environment variable expansion in config
+- [ ] Reload configuration without restart
+- **Status**: Partially implemented (SOCKS5 only)
+- **Difficulty**: Medium
+- **Impact**: Medium - More flexibility
+
+### Enhanced DNS Resolution
+- [ ] Implement proxy_dns_daemon feature from proxychains-ng
+- [ ] Better DNS cache management
+- [ ] Custom DNS server configuration
+- [ ] DNS-over-HTTPS support
+- [ ] IPv6 DNS resolution improvements
+- **Status**: Basic fake IP DNS implemented
+- **Difficulty**: High
+- **Impact**: High - Better privacy and performance
+
+### IPv6 Improvements
+- [ ] Full IPv6 proxy chain support
+- [ ] IPv6 local network rules
+- [ ] Better IPv6 fake IP range management
+- [ ] Dual-stack (IPv4/IPv6) handling
+- **Status**: Partial IPv6 support exists
+- **Difficulty**: Medium
+- **Impact**: Medium - Future-proofing
+
+### Logging and Debugging
+- [ ] Structured logging (JSON output option)
+- [ ] Per-process log files
+- [ ] Log rotation
+- [ ] Performance metrics logging
+- [ ] Visual Studio debug output improvements
+- **Status**: Basic logging exists
+- **Difficulty**: Low
+- **Impact**: Medium - Better troubleshooting
+
+## Low Priority Features
+
+### GUI Application
+- [ ] Basic GUI for configuration
+- [ ] Proxy list management UI
+- [ ] Real-time connection monitoring
+- [ ] System tray icon
+- [ ] Profile management
+- **Status**: Not implemented (command-line only)
+- **Difficulty**: High
+- **Impact**: Low - CLI works well, but GUI would help non-technical users
+
+### Performance Optimizations
+- [ ] Connection pooling for proxy connections
+- [ ] Async I/O improvements
+- [ ] Memory usage optimization
+- [ ] Startup time reduction
+- [ ] DLL injection speed improvements
+- **Status**: Basic implementation exists
+- **Difficulty**: Medium
+- **Impact**: Low - Current performance is acceptable
+
+### Testing Infrastructure
+- [ ] Unit tests for core functionality
+- [ ] Integration tests with real proxies
+- [ ] Automated testing in CI/CD
+- [ ] Mock proxy server for testing
+- [ ] Performance benchmarks
+- **Status**: No automated tests
+- **Difficulty**: Medium
+- **Impact**: Medium - Better code quality
+
+### Security Enhancements
+- [ ] Code signing for binaries
+- [ ] ASLR and DEP enforcement verification
+- [ ] Security audit of DLL injection code
+- [ ] Sandboxing options
+- [ ] Certificate pinning for HTTPS proxies
+- **Status**: Basic security only
+- **Difficulty**: High
+- **Impact**: Medium - Enhanced security
+
+## Bug Fixes & Improvements
+
+### Known Issues
+- [ ] Domain name resolution should be case-insensitive
+- [ ] Handle "fork-and-exit" child processes properly
+- [ ] Powershell wget compatibility issues
+- [ ] Better ConEmu compatibility (currently incompatible)
+- [ ] Handle Cygwin encoding issues completely
+- **Status**: Some documented in README To-do section
+- **Difficulty**: Various
+- **Impact**: Various
+
+### Code Quality
+- [ ] Refactor large functions into smaller ones
+- [ ] Improve error handling consistency
+- [ ] Add more inline documentation
+- [ ] Reduce code duplication
+- [ ] Better separation of concerns (Win32 vs Cygwin code)
+- **Status**: Basic code structure exists
+- **Difficulty**: Medium
+- **Impact**: Medium - Maintainability
+
+### Documentation
+- [ ] Developer documentation
+- [ ] API documentation for hooks
+- [ ] Architecture diagrams
+- [ ] Video tutorials
+- [ ] Troubleshooting guide expansion
+- **Status**: Basic README and TESTING.md exist
+- **Difficulty**: Low
+- **Impact**: Medium - Easier contribution
+
+## Platform Support
+
+### Additional Windows Versions
+- [ ] Windows Server 2022 testing
+- [ ] Windows 11 ARM64 support
+- [ ] Windows on ARM testing
+- [ ] Older Windows versions (Vista, XP) maintenance
+- **Status**: Tested on Win 7/10/11 x64
+- **Difficulty**: Low-Medium
+- **Impact**: Low - Niche platforms
+
+### Cross-Platform Improvements
+- [ ] WSL2 integration
+- [ ] Wine compatibility for Linux users
+- [ ] ReactOS compatibility testing
+- **Status**: Not tested
+- **Difficulty**: Medium
+- **Impact**: Low - Niche use cases
+
+## Feature Requests from Community
+
+### User-Requested Features
+- [ ] Support for authentication with proxy servers (username/password)
+- [ ] Whitelist/blacklist based on process name
+- [ ] Global system-wide proxying option
+- [ ] Browser extension integration
+- [ ] VPN-like system proxy configuration
+- **Status**: Not implemented
+- **Difficulty**: Various
+- **Impact**: Various - Based on user demand
+
+## Research & Exploration
+
+### Advanced Features
+- [ ] Investigate Tor integration
+- [ ] Research alternative DLL injection methods
+- [ ] Explore kernel-mode filtering options
+- [ ] Study Windows Filtering Platform (WFP) integration
+- [ ] Research zero-configuration proxy detection
+- **Status**: Not started
+- **Difficulty**: High
+- **Impact**: Unknown - Research phase
+
+## Priority Legend
+- **High**: Critical for core functionality or high user demand
+- **Medium**: Important but not blocking
+- **Low**: Nice to have, convenience features
+
+## Difficulty Legend
+- **Low**: 1-2 days of work
+- **Medium**: 3-7 days of work
+- **High**: 1-4 weeks of work
+
+## Next Actions
+
+### Immediate (Next Sprint)
+1. Implement dynamic chain support (skip dead proxies)
+2. Add HTTP/HTTPS proxy support
+3. Create unit testing framework
+4. Improve documentation
+
+### Short Term (1-2 months)
+1. Implement round-robin and random chain modes
+2. UDP associate for DNS
+3. Enhanced logging system
+4. Security audit
+
+### Long Term (3-6 months)
+1. GUI application
+2. Performance optimizations
+3. Advanced proxy authentication
+4. Full IPv6 support
+
+## Contributing
+
+If you want to contribute to any of these features:
+1. Check the issue tracker for related discussions
+2. Comment on the feature you want to work on
+3. Fork the repository
+4. Create a feature branch
+5. Submit a pull request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details (to be created).

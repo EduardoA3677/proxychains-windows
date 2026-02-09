@@ -1,0 +1,345 @@
+name: Copilot Agent Setup
+
+# This workflow sets up the environment for GitHub Copilot agents to work on this repository
+# It ensures all necessary tools and documentation are available for the agents
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/agents/**'
+      - '.github/copilot-instructions.md'
+      - 'TODO.md'
+
+jobs:
+  validate-agent-config:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Validate agent configuration files
+      run: |
+        echo "Validating agent configuration..."
+        
+        # Check if required files exist
+        if [ ! -f ".github/copilot-instructions.md" ]; then
+          echo "❌ Missing .github/copilot-instructions.md"
+          exit 1
+        fi
+        
+        if [ ! -f ".github/agents/proxychains-developer.md" ]; then
+          echo "❌ Missing .github/agents/proxychains-developer.md"
+          exit 1
+        fi
+        
+        if [ ! -f "TODO.md" ]; then
+          echo "❌ Missing TODO.md"
+          exit 1
+        fi
+        
+        echo "✅ All required agent configuration files present"
+    
+    - name: Validate TODO.md format
+      run: |
+        echo "Validating TODO.md format..."
+        
+        # Check if TODO.md has required sections
+        if ! grep -q "## High Priority Features" TODO.md; then
+          echo "❌ TODO.md missing 'High Priority Features' section"
+          exit 1
+        fi
+        
+        if ! grep -q "## Medium Priority Features" TODO.md; then
+          echo "❌ TODO.md missing 'Medium Priority Features' section"
+          exit 1
+        fi
+        
+        # Count TODO items
+        TODO_COUNT=$(grep -c "^- \[ \]" TODO.md || true)
+        DONE_COUNT=$(grep -c "^- \[x\]" TODO.md || true)
+        
+        echo "✅ TODO.md format valid"
+        echo "📝 Found $TODO_COUNT pending items"
+        echo "✅ Found $DONE_COUNT completed items"
+    
+    - name: Generate agent capability report
+      run: |
+        echo "# Agent Capability Report" > agent-report.md
+        echo "" >> agent-report.md
+        echo "Generated: $(date)" >> agent-report.md
+        echo "" >> agent-report.md
+        
+        echo "## Available Agents" >> agent-report.md
+        echo "" >> agent-report.md
+        
+        for agent in .github/agents/*.md; do
+          if [ -f "$agent" ]; then
+            echo "- $(basename $agent .md)" >> agent-report.md
+          fi
+        done
+        
+        echo "" >> agent-report.md
+        echo "## TODO Statistics" >> agent-report.md
+        echo "" >> agent-report.md
+        
+        TODO_COUNT=$(grep -c "^- \[ \]" TODO.md || echo 0)
+        DONE_COUNT=$(grep -c "^- \[x\]" TODO.md || echo 0)
+        TOTAL=$((TODO_COUNT + DONE_COUNT))
+        
+        if [ $TOTAL -gt 0 ]; then
+          PERCENT=$((DONE_COUNT * 100 / TOTAL))
+        else
+          PERCENT=0
+        fi
+        
+        echo "- Pending: $TODO_COUNT" >> agent-report.md
+        echo "- Completed: $DONE_COUNT" >> agent-report.md
+        echo "- Total: $TOTAL" >> agent-report.md
+        echo "- Progress: $PERCENT%" >> agent-report.md
+        
+        echo "" >> agent-report.md
+        echo "## High Priority Features" >> agent-report.md
+        echo "" >> agent-report.md
+        
+        # Extract high priority TODO items
+        awk '/## High Priority Features/,/## Medium Priority Features/ {print}' TODO.md | \
+          grep "^- \[ \]" | head -5 >> agent-report.md || echo "No high priority items" >> agent-report.md
+        
+        cat agent-report.md
+    
+    - name: Upload agent report
+      uses: actions/upload-artifact@v3
+      with:
+        name: agent-capability-report
+        path: agent-report.md
+        retention-days: 30
+    
+    - name: Check for code quality tools
+      run: |
+        echo "Checking for recommended development tools..."
+        
+        # These would be installed in a developer's environment
+        # The workflow just documents what's needed
+        
+        echo "## Required Tools for Development"
+        echo ""
+        echo "✅ Git - Version control"
+        echo "✅ Visual Studio 2019+ - Build system"
+        echo "✅ Windows SDK - Win32 API headers"
+        echo "📦 clang-format - Code formatting (recommended)"
+        echo "📦 cppcheck - Static analysis (recommended)"
+        echo "📦 PVS-Studio - Advanced static analysis (optional)"
+        echo ""
+        echo "## Agent Automation Tools"
+        echo ""
+        echo "✅ GitHub Actions - CI/CD"
+        echo "✅ GitHub Copilot - AI assistance"
+        echo "✅ MCP Servers - Extended capabilities"
+        echo ""
+        echo "For local development, install Visual Studio with C++ workload."
+        echo "For agent development, ensure GitHub Copilot has access to:"
+        echo "  - .github/copilot-instructions.md"
+        echo "  - .github/agents/*.md"
+        echo "  - TODO.md"
+        echo "  - All source files in src/ and include/"
+
+  setup-development-environment:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Verify Visual Studio installation
+      shell: cmd
+      run: |
+        echo Checking for Visual Studio...
+        if exist "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\IDE\devenv.com" (
+          echo ✅ Visual Studio 2019 Enterprise found
+        ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\devenv.com" (
+          echo ✅ Visual Studio 2022 Enterprise found  
+        ) else (
+          echo ❌ Visual Studio not found in expected locations
+        )
+    
+    - name: Update submodules
+      run: |
+        git submodule update --init --recursive --remote
+      shell: cmd
+    
+    - name: Verify build can succeed
+      shell: cmd
+      run: |
+        echo Verifying build environment is ready...
+        echo Project file: proxychains.exe.sln
+        if exist "proxychains.exe.sln" (
+          echo ✅ Solution file found
+        ) else (
+          echo ❌ Solution file not found
+          exit 1
+        )
+        
+        echo Checking submodules...
+        if exist "minhook" (
+          echo ✅ MinHook submodule present
+        ) else (
+          echo ⚠️ MinHook submodule missing - run: git submodule update --init
+        )
+        
+        if exist "uthash" (
+          echo ✅ uthash submodule present
+        ) else (
+          echo ⚠️ uthash submodule missing - run: git submodule update --init
+        )
+    
+    - name: Generate agent usage guide
+      shell: bash
+      run: |
+        cat > AGENT_USAGE.md << 'EOF'
+        # Agent Usage Guide for Proxychains-Windows
+        
+        ## Quick Start
+        
+        ### Using the Proxychains Developer Agent
+        
+        The custom agent is configured to understand this codebase and implement features from TODO.md.
+        
+        #### Via GitHub Copilot
+        
+        In your IDE with Copilot enabled:
+        ```
+        # Ask Copilot to use the agent context
+        "Following the proxychains developer guidelines, implement [feature from TODO.md]"
+        ```
+        
+        Copilot will reference:
+        - `.github/copilot-instructions.md` - Project conventions
+        - `.github/agents/proxychains-developer.md` - Agent capabilities
+        - `TODO.md` - Feature requirements
+        
+        #### Via MCP (Model Context Protocol)
+        
+        If using MCP-compatible tools:
+        ```
+        @task agent_type=general-purpose description="Implement feature" prompt="
+        Following the guidelines in .github/agents/proxychains-developer.md,
+        implement [feature name] from TODO.md in the proxychains-windows project.
+        "
+        ```
+        
+        ## Agent Workflow
+        
+        1. **Feature Selection**: Choose item from TODO.md
+        2. **Analysis**: Agent reads related code, understands requirements
+        3. **Planning**: Agent proposes implementation approach
+        4. **Implementation**: Agent writes code following conventions
+        5. **Testing**: Agent describes test scenarios
+        6. **Documentation**: Agent updates docs and marks TODO complete
+        
+        ## Example: Implementing Dynamic Chain Support
+        
+        ### Step 1: Request Implementation
+        ```
+        "Implement dynamic chain support from TODO.md"
+        ```
+        
+        ### Step 2: Agent Analysis
+        Agent will:
+        - Read current proxy chain implementation
+        - Identify files to modify
+        - Plan state management approach
+        - Consider error handling
+        
+        ### Step 3: Agent Proposes Plan
+        Agent provides:
+        - Files to modify
+        - Data structures to add
+        - Algorithm overview
+        - Test strategy
+        
+        ### Step 4: User Approval
+        User reviews and approves/adjusts plan
+        
+        ### Step 5: Implementation
+        Agent implements:
+        - Config parsing for dynamic_chain option
+        - Proxy state tracking
+        - Skip logic for dead proxies
+        - Error handling for all-dead scenario
+        
+        ### Step 6: Documentation
+        Agent updates:
+        - TODO.md (mark as complete)
+        - CHANGELOG.md (add entry)
+        - proxychains.conf (document option)
+        - TESTING.md (add test cases)
+        
+        ## Best Practices
+        
+        ### For Users
+        - Start with high-priority items from TODO.md
+        - Review agent's plan before implementation
+        - Test the implementation on your system
+        - Provide feedback if something doesn't work
+        
+        ### For Agent
+        - Always read copilot-instructions.md first
+        - Follow coding conventions exactly
+        - Handle both x86 and x64 architectures
+        - Add comprehensive error handling
+        - Include logging for debugging
+        - Update all relevant documentation
+        
+        ## Troubleshooting
+        
+        ### Agent doesn't understand project structure
+        **Solution**: Make sure it reads .github/copilot-instructions.md first
+        
+        ### Agent suggests incompatible changes
+        **Solution**: Remind it to check x86/x64 compatibility requirements
+        
+        ### Agent misses documentation updates
+        **Solution**: Explicitly ask it to update README, CHANGELOG, TODO, and TESTING
+        
+        ## Contributing via Agent
+        
+        1. Fork repository
+        2. Set up agent with copilot-instructions.md
+        3. Select feature from TODO.md
+        4. Let agent implement following guidelines
+        5. Review agent's work
+        6. Test thoroughly
+        7. Submit pull request
+        
+        ## Agent Limitations
+        
+        Agent cannot:
+        - Build/compile code (needs Visual Studio)
+        - Run actual tests (needs Windows environment)
+        - Test with real proxies (needs network setup)
+        - Make architectural decisions without approval
+        
+        Agent should ask for:
+        - Clarification on ambiguous requirements
+        - Approval of major design decisions
+        - User testing/validation of changes
+        - Help with build/runtime errors
+        
+        ## Support
+        
+        Issues with agent usage:
+        - Check .github/agents/proxychains-developer.md
+        - Review .github/copilot-instructions.md
+        - Consult TODO.md for feature details
+        - Ask in GitHub Issues for help
+        EOF
+        
+        cat AGENT_USAGE.md
+    
+    - name: Upload agent usage guide
+      uses: actions/upload-artifact@v3
+      with:
+        name: agent-usage-guide
+        path: AGENT_USAGE.md
+        retention-days: 90
+
