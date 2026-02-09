@@ -57,6 +57,65 @@ After building:
                         └──────────────────────────┘
 ```
 
+### Connection Flow (Proxy Chain)
+
+```
+Application                Hook DLL                  Proxy Chain              Target
+    │                         │                          │                      │
+    ├── connect(target) ─────▶│                          │                      │
+    │                         ├── TunnelThroughChain ───▶│                      │
+    │                         │   (chain mode logic)     │                      │
+    │                         │                          │                      │
+    │                         │   ┌── GenericTunnelTo ──▶│ Proxy 1              │
+    │                         │   │   (connect+handshake)├──TCP──▶│             │
+    │                         │   │                      │        │             │
+    │                         │   ├── GenericTunnelTo ──▶│ Proxy 2│             │
+    │                         │   │                      ├──TCP───┼──▶│         │
+    │                         │   │                      │        │   │         │
+    │                         │   └── GenericConnectTo ─▶│        │   │         │
+    │                         │       (final target)     ├──TCP───┼───┼──▶│     │
+    │                         │                          │        │   │   │     │
+    │◀── return(success) ─────│                          │        │   │   │     │
+    │                         │                          │        │   │   │     │
+    ├── send(data) ──────────▶│──────────────────────────┼────────┼───┼──▶│     │
+    │◀── recv(data) ──────────│◀─────────────────────────┼────────┼───┼───│     │
+```
+
+### DNS Resolution Flow
+
+```
+Application                Hook DLL                  IPC Server (exe)
+    │                         │                          │
+    ├── getaddrinfo() ──────▶│                          │
+    │                         ├── Generate Fake IP ─────▶│ (store hostname→IP mapping)
+    │◀── return(fake IP) ─────│                          │
+    │                         │                          │
+    ├── connect(fake IP) ───▶│                          │
+    │                         ├── Lookup hostname ──────▶│ (resolve fake IP→hostname)
+    │                         │◀── return hostname ──────│
+    │                         │                          │
+    │                         ├── SOCKS5 CONNECT with hostname (remote DNS)
+    │                         │                          │
+```
+
+### Cross-Architecture Injection
+
+```
+proxychains.exe (x64)
+    │
+    ├── CreateProcess(target.exe)
+    │
+    ├── IsWow64Process(target)?
+    │   │
+    │   ├── YES (x86 target) ──▶ Inject proxychains_hook_x86.dll
+    │   │                         (via modified entry point)
+    │   │
+    │   └── NO (x64 target) ───▶ Inject proxychains_hook_x64.dll
+    │                             (via modified entry point)
+    │
+    └── ResumeThread(target)
+```
+
 ### Key Source Files
 
 | File | Purpose |

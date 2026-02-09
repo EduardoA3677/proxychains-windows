@@ -111,11 +111,11 @@
 
 ### Security Enhancements
 - [ ] Code signing for binaries
-- [ ] ASLR and DEP enforcement verification
+- [x] ASLR and DEP enforcement verification
 - [ ] Security audit of DLL injection code
 - [ ] Sandboxing options
 - [ ] Certificate pinning for HTTPS proxies
-- **Status**: Basic security only
+- **Status**: ASLR (RandomizedBaseAddress) and DEP (DataExecutionPrevention) explicitly enabled in Release builds for both exe and DLL
 - **Difficulty**: High
 - **Impact**: Medium - Enhanced security
 
@@ -144,10 +144,10 @@
 ### Documentation
 - [x] Developer documentation
 - [x] API documentation for hooks
-- [ ] Architecture diagrams
+- [x] Architecture diagrams
 - [ ] Video tutorials
 - [x] Troubleshooting guide expansion
-- **Status**: CONTRIBUTING.md created. API_HOOKS.md documents all hooked functions and proxy protocols. Troubleshooting expanded in TESTING.md.
+- **Status**: CONTRIBUTING.md with architecture diagrams (connection flow, DNS resolution, cross-arch injection). API_HOOKS.md documents all hooked functions and proxy protocols. Troubleshooting expanded in TESTING.md.
 - **Difficulty**: Low
 - **Impact**: Medium - Easier contribution
 
