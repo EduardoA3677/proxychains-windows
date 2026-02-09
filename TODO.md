@@ -60,10 +60,10 @@
 
 ### IPv6 Improvements
 - [ ] Full IPv6 proxy chain support
-- [ ] IPv6 local network rules
+- [x] IPv6 local network rules
 - [ ] Better IPv6 fake IP range management
 - [ ] Dual-stack (IPv4/IPv6) handling
-- **Status**: Partial IPv6 support exists
+- **Status**: IPv6 link-local (fe80::/10), loopback (::1/128), and unique-local (fc00::/7) rules added to default config via IP-CIDR rules
 - **Difficulty**: Medium
 - **Impact**: Medium - Future-proofing
 

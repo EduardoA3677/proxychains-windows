@@ -45,6 +45,8 @@ All notable changes to proxychains-windows will be documented in this file.
 
 ### Fixed
 - **Case-insensitive DNS**: Domain name resolution in hosts file lookup and fake IP mapping now uses case-insensitive comparison (`StrCmpIW` instead of `StrCmpW`), matching RFC behavior
+- **IPv6 link-local CIDR**: Fixed fe80::/8 to correct fe80::/10 prefix length per RFC 4291
+- **IPv6 loopback rule**: Added ::1/128 to default exclusion rules
 
 ### Technical Details
 
