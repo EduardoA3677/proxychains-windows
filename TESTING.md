@@ -423,6 +423,88 @@ A successful test should show:
    ```
 4. Expected: Each command uses a different proxy (rotation persists across processes via shared memory)
 
+### Test 22: SOCKS5 UDP Associate DNS
+
+1. Configure `proxychains.conf`:
+   ```
+   proxy_dns_udp_associate
+   dns_server 8.8.8.8
+   ```
+2. Run with debug logging:
+   ```cmd
+   proxychains.exe -l 500 curl https://ifconfig.me
+   ```
+3. Expected: DNS queries are resolved through the SOCKS5 proxy's UDP relay
+4. Check logs: `DNS via SOCKS5 UDP ASSOCIATE: <hostname> resolved (IPv4=1, IPv6=0)`
+
+### Test 23: DNS Cache
+
+1. Configure `proxychains.conf`:
+   ```
+   dns_cache_ttl = 300
+   ```
+2. Run with debug logging:
+   ```cmd
+   proxychains.exe -l 500 curl https://ifconfig.me && proxychains.exe -l 500 curl https://ifconfig.me
+   ```
+3. Expected: Second request shows DNS cache hit
+4. Check logs: `DNS cache hit: ifconfig.me` on second request
+
+### Test 24: Custom DNS Server
+
+1. Configure `proxychains.conf`:
+   ```
+   proxy_dns_udp_associate
+   dns_server 1.1.1.1:53
+   ```
+2. Run:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+3. Expected: DNS queries are sent to 1.1.1.1 instead of default 8.8.8.8
+
+### Test 25: WinHTTP Hook (PowerShell)
+
+1. Run PowerShell through proxychains:
+   ```cmd
+   proxychains.exe powershell -Command "Invoke-WebRequest https://ifconfig.me -UseBasicParsing"
+   ```
+2. Expected: PowerShell's HTTP request goes through the proxy
+3. Check logs: `WinHttpOpen: Overriding access type to NAMED_PROXY`
+
+### Test 26: WinINet Hook
+
+1. Run an application that uses WinINet:
+   ```cmd
+   proxychains.exe powershell -Command "[System.Net.WebClient]::new().DownloadString('https://ifconfig.me')"
+   ```
+2. Expected: The request goes through the proxy
+
+### Test 27: IPv6 Dual-Stack
+
+1. Configure `proxychains.conf`:
+   ```
+   first_tunnel_uses_ipv4 1
+   first_tunnel_uses_ipv6 1
+   ```
+2. Run:
+   ```cmd
+   proxychains.exe -l 500 curl https://ipv6.ifconfig.me
+   ```
+3. Expected: IPv6 connections are properly handled through the proxy chain
+
+### Test 28: Per-Process Log File
+
+1. Configure `proxychains.conf`:
+   ```
+   log_file C:\temp\proxychains_debug.log
+   ```
+2. Run:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+3. Expected: Log output is written to `C:\temp\proxychains_debug.log`
+
 ## Reporting Issues
 
 If you encounter issues, please report with:

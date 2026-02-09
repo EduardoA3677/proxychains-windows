@@ -465,6 +465,11 @@ typedef struct _PROXYCHAINS_CONFIG {
 	PXCH_UINT32 dwCustomDnsServerPort;
 	PXCH_UINT32 dwHasCustomDnsServer;
 
+	// Per-process log file: when set, log output is written to this file path
+	// Supports %PID% placeholder which is replaced with the process ID
+	wchar_t szLogFilePath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+	PXCH_UINT32 dwHasLogFile;
+
 	// Process name filtering: whitelist (process_only) or blacklist (process_except)
 	// When dwProcessFilterMode == 1 (whitelist): only inject into matching process names
 	// When dwProcessFilterMode == 2 (blacklist): inject into all except matching process names

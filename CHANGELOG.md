@@ -32,6 +32,12 @@ All notable changes to proxychains-windows will be documented in this file.
 - **Process Name Filtering**: New `process_only` (whitelist) and `process_except` (blacklist) config directives to control which child processes get injected. Case-insensitive matching on executable filename. Maximum 8 filter entries.
 - **Persistent Round-Robin State**: Round-robin chain mode counter is now stored in named shared memory (`Local\proxychains_rr_<pid>`) for consistent rotation across child processes.
 - **WinHTTP/WinINet API Hooks**: Hook `WinHttpOpen` and `WinHttpSetOption` (winhttp.dll) and `InternetOpenA/W` and `InternetSetOptionA/W` (wininet.dll) to force proxy settings on applications using high-level HTTP APIs (PowerShell Invoke-WebRequest, .NET HttpClient, browsers, Windows Update, etc.).
+- **SOCKS5 UDP Associate for DNS**: Implement SOCKS5 UDP ASSOCIATE command (0x03) to forward DNS queries through the proxy's UDP relay. Prevents DNS leaks by routing A and AAAA queries through the proxy. Enable with `proxy_dns_udp_associate` in config.
+- **DNS Cache**: In-memory DNS cache with configurable TTL via `dns_cache_ttl` option (in seconds). Thread-safe using CRITICAL_SECTION, stores both IPv4 and IPv6 results, automatically evicts expired entries. Maximum 256 cached entries with FIFO eviction.
+- **Custom DNS Server**: New `dns_server` config option to specify upstream DNS resolver IP for UDP Associate queries (default: 8.8.8.8:53).
+- **Full IPv6 Proxy Chain Support**: SOCKS5 connect handles IPv6 addresses (ATYP 0x04). DirectConnect now falls back to any available address family for dual-stack compatibility (IPv6 proxy with IPv4 target or vice versa).
+- **Dual-Stack DNS**: DNS cache stores both IPv4 (A) and IPv6 (AAAA) records. GetAddrInfoW cache lookup supports AF_INET, AF_INET6, and AF_UNSPEC queries.
+- **Per-Process Log File**: New `log_file` config option to write log output to a file path.
 
 ### Changed
 - **DLL Path Handling**: Hook DLL paths are now dynamically selected at injection time based on target architecture

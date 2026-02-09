@@ -29,10 +29,10 @@
 - **Impact**: Low - Useful for testing
 
 ### UDP Associate Support
-- [ ] Implement SOCKS5 UDP associate for DNS
-- [ ] UDP packet forwarding through proxy
-- [ ] DNS queries via UDP associate
-- **Status**: Not implemented (marked as "NOT SUPPORTED" in config)
+- [x] Implement SOCKS5 UDP associate for DNS
+- [x] UDP packet forwarding through proxy
+- [x] DNS queries via UDP associate
+- **Status**: Implemented. SOCKS5 UDP ASSOCIATE (command 0x03) sends DNS queries through the proxy's UDP relay, preventing DNS leaks. Enable with `proxy_dns_udp_associate` config option. Supports authentication, custom DNS server via `dns_server` option, and IPv4/IPv6 (A/AAAA) queries.
 - **Difficulty**: High
 - **Impact**: High - Prevent DNS leaks better
 
@@ -59,31 +59,31 @@
 - **Impact**: Medium - More flexibility
 
 ### Enhanced DNS Resolution
-- [ ] Implement proxy_dns_daemon feature from proxychains-ng
-- [ ] Better DNS cache management
-- [ ] Custom DNS server configuration
+- [x] Implement proxy_dns_daemon feature from proxychains-ng
+- [x] Better DNS cache management
+- [x] Custom DNS server configuration
 - [ ] DNS-over-HTTPS support
-- [ ] IPv6 DNS resolution improvements
-- **Status**: Basic fake IP DNS implemented
+- [x] IPv6 DNS resolution improvements
+- **Status**: DNS cache with configurable TTL (`dns_cache_ttl`), custom DNS server (`dns_server`), SOCKS5 UDP ASSOCIATE for leak-free DNS. DNS cache is thread-safe with CRITICAL_SECTION, supports both IPv4 and IPv6 results, auto-evicts expired entries. UDP Associate resolves both A and AAAA records through the proxy.
 - **Difficulty**: High
 - **Impact**: High - Better privacy and performance
 
 ### IPv6 Improvements
-- [ ] Full IPv6 proxy chain support
+- [x] Full IPv6 proxy chain support
 - [x] IPv6 local network rules
-- [ ] Better IPv6 fake IP range management
-- [ ] Dual-stack (IPv4/IPv6) handling
-- **Status**: IPv6 link-local (fe80::/10), loopback (::1/128), and unique-local (fc00::/7) rules added to default config via IP-CIDR rules
+- [x] Better IPv6 fake IP range management
+- [x] Dual-stack (IPv4/IPv6) handling
+- **Status**: Full IPv6 proxy chain support: SOCKS5 connect handles IPv6 addresses (ATYP 0x04), DirectConnect falls back to any available address family for dual-stack compatibility, DNS cache stores both IPv4 and IPv6 results, GetAddrInfoW cache lookup supports AF_INET6 queries.
 - **Difficulty**: Medium
 - **Impact**: Medium - Future-proofing
 
 ### Logging and Debugging
 - [ ] Structured logging (JSON output option)
-- [ ] Per-process log files
+- [x] Per-process log files
 - [ ] Log rotation
 - [x] Performance metrics logging
 - [ ] Visual Studio debug output improvements
-- **Status**: Per-proxy success/failure counters tracked via InterlockedIncrement for health monitoring
+- **Status**: Per-proxy success/failure counters tracked via InterlockedIncrement for health monitoring. Per-process log file via `log_file` config directive.
 - **Difficulty**: Low
 - **Impact**: Medium - Better troubleshooting
 
@@ -134,10 +134,10 @@
 ### Known Issues
 - [x] Domain name resolution should be case-insensitive
 - [ ] Handle "fork-and-exit" child processes properly
-- [ ] Powershell wget compatibility issues
+- [x] Powershell wget compatibility issues
 - [ ] Better ConEmu compatibility (currently incompatible)
 - [ ] Handle Cygwin encoding issues completely
-- **Status**: Case-insensitive DNS fixed; others documented in README To-do section
+- **Status**: Case-insensitive DNS fixed. PowerShell wget/Invoke-WebRequest fixed via WinHTTP/WinINet API hooks (PowerShell uses WinHTTP internally). Others documented in README To-do section.
 - **Difficulty**: Various
 - **Impact**: Various
 
@@ -224,8 +224,8 @@
 
 ### Short Term (1-2 months)
 1. ~~Implement round-robin and random chain modes~~ ✅ Done
-2. UDP associate for DNS
-3. ~~Enhanced logging system~~ ✅ Done (health tracking metrics)
+2. ~~UDP associate for DNS~~ ✅ Done
+3. ~~Enhanced logging system~~ ✅ Done (health tracking metrics, per-process log files)
 4. Security audit
 5. ~~Proxy health checking and failover~~ ✅ Done
 
@@ -233,7 +233,7 @@
 1. GUI application
 2. Performance optimizations
 3. ~~Advanced proxy authentication~~ ✅ Done (SOCKS5/SOCKS4/HTTP auth)
-4. Full IPv6 support
+4. ~~Full IPv6 support~~ ✅ Done (IPv6 proxy chains, dual-stack, DNS cache)
 
 ## Contributing
 

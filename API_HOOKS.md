@@ -41,6 +41,24 @@ All three hooks support process name filtering via `process_only`/`process_excep
 The `ShouldInjectProcess()` function extracts the executable name from `lpApplicationName` or `lpCommandLine`
 and performs case-insensitive matching against the configured filter list.
 
+### WinHTTP Hooks
+
+| Function | DLL | Purpose |
+|----------|-----|---------|
+| `WinHttpOpen()` | winhttp.dll | Forces proxy settings when creating WinHTTP sessions |
+| `WinHttpSetOption()` | winhttp.dll | Intercepts proxy configuration changes (WINHTTP_OPTION_PROXY) |
+
+### WinINet Hooks
+
+| Function | DLL | Purpose |
+|----------|-----|---------|
+| `InternetOpenA()` | wininet.dll | Forces proxy settings when creating WinINet sessions (ANSI) |
+| `InternetOpenW()` | wininet.dll | Forces proxy settings when creating WinINet sessions (Wide) |
+| `InternetSetOptionA()` | wininet.dll | Intercepts proxy configuration changes (INTERNET_OPTION_PROXY, ANSI) |
+| `InternetSetOptionW()` | wininet.dll | Intercepts proxy configuration changes (INTERNET_OPTION_PROXY, Wide) |
+
+WinHTTP and WinINet hooks ensure that applications using high-level HTTP APIs (PowerShell `Invoke-WebRequest`, .NET `HttpClient`, browsers, Windows Update, etc.) are transparently proxied. The hooks override the access type to `NAMED_PROXY` and inject the configured proxy address.
+
 ## Proxy Protocol Implementations
 
 ### SOCKS5 (`socks5`)
@@ -55,6 +73,23 @@ and performs case-insensitive matching against the configured filter list.
 1. Handshake: Send auth method selection → Receive server method choice
 2. Authentication (if required): Send username/password → Receive auth result
 3. Connect: Send CONNECT request with target address → Receive connect response
+
+### SOCKS5 UDP Associate (DNS)
+
+- **Function**: `Socks5UdpAssociateDnsQuery()`
+- **Helper Functions**: `BuildDnsQuery()`, `ParseDnsResponse()`, `ResolveDnsViaSocks5UdpAssociate()`
+- **Config**: `proxy_dns_udp_associate`
+- **Protocol**: RFC 1928 (command 0x03)
+
+**DNS Resolution Flow**:
+1. Connect TCP to SOCKS5 proxy (control channel)
+2. Perform SOCKS5 handshake (auth if configured)
+3. Send UDP ASSOCIATE request (cmd=0x03, DST.ADDR=0.0.0.0:0)
+4. Receive relay address (BND.ADDR, BND.PORT) from proxy
+5. Create UDP socket, build SOCKS5 UDP header + DNS query
+6. Send to relay address, receive DNS response
+7. Parse A/AAAA records from response
+8. Cache result if `dns_cache_ttl > 0`
 
 ### SOCKS4/SOCKS4a (`socks4`)
 

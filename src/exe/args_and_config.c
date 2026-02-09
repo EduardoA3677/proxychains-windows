@@ -514,6 +514,11 @@ void PrintConfiguration(PROXYCHAINS_CONFIG* pPxchConfig)
 	LOGD(L"WillFirstTunnelUseIpv4: " WPRDW, pPxchConfig->dwWillFirstTunnelUseIpv4);
 	LOGD(L"WillFirstTunnelUseIpv6: " WPRDW, pPxchConfig->dwWillFirstTunnelUseIpv6);
 	LOGD(L"WillGenFakeIpUsingHashedHostname: " WPRDW, pPxchConfig->dwWillGenFakeIpUsingHashedHostname);
+	LOGD(L"DnsCacheTtlSeconds: " WPRDW, pPxchConfig->dwDnsCacheTtlSeconds);
+	LOGD(L"HasCustomDnsServer: " WPRDW, pPxchConfig->dwHasCustomDnsServer);
+	if (pPxchConfig->dwHasCustomDnsServer) {
+		LOGD(L"CustomDnsServerPort: " WPRDW, pPxchConfig->dwCustomDnsServerPort);
+	}
 	switch (pPxchConfig->dwDefaultTarget) {
 		case PXCH_RULE_TARGET_BLOCK: pszTargetDesc = L"BLOCK"; break;
 		case PXCH_RULE_TARGET_DIRECT: pszTargetDesc = L"DIRECT"; break;
@@ -789,6 +794,13 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	pPxchConfig->dwRandomSeed = 0;
 	pPxchConfig->dwRandomSeedSet = 0;
 
+	pPxchConfig->dwDnsCacheTtlSeconds = 0;
+	pPxchConfig->dwHasCustomDnsServer = FALSE;
+	pPxchConfig->dwCustomDnsServerPort = 53;
+	ZeroMemory(&pPxchConfig->CustomDnsServer, sizeof(pPxchConfig->CustomDnsServer));
+	pPxchConfig->dwHasLogFile = FALSE;
+	ZeroMemory(pPxchConfig->szLogFilePath, sizeof(pPxchConfig->szLogFilePath));
+
 	// Parse configuration file
 
 	if ((dwLastError = OpenConfigurationFile(pTempPxchConfig)) != NO_ERROR) goto err_general;
@@ -841,11 +853,42 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 				if (OptionGetNumberValueAfterOptionName(&lValue, sOptionNameEnd, NULL, 0, 1000) == -1) goto err_invalid_config_with_msg;
 				pPxchConfig->dwLogLevel = (DWORD)lValue;
 			}
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"log_file")) {
+			{
+				WCHAR* pszValue = sOptionNameEnd;
+				while (*pszValue == L' ' || *pszValue == L'\t') pszValue++;
+				if (*pszValue) {
+					StringCchCopyW(pPxchConfig->szLogFilePath, _countof(pPxchConfig->szLogFilePath), pszValue);
+					pPxchConfig->dwHasLogFile = TRUE;
+				}
+			}
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"proxy_dns")) {
 			pTempPxchConfig->dwWillUseFakeIpAsRemoteDns = TRUE;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"proxy_dns_udp_associate")) {
-			pszParseErrorMessage = L"proxy_dns_udp_associate is not supported!";
-			goto err_invalid_config_with_msg;
+			pPxchConfig->dwWillUseUdpAssociateAsRemoteDns = TRUE;
+			pTempPxchConfig->dwWillUseFakeIpAsRemoteDns = TRUE;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"dns_cache_ttl")) {
+			if (OptionGetNumberValueAfterOptionName(&lValue, sOptionNameEnd, NULL, 0, 86400) == -1) goto err_invalid_config_with_msg;
+			pPxchConfig->dwDnsCacheTtlSeconds = (PXCH_UINT32)lValue;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"dns_server")) {
+			{
+				PXCH_IP_PORT DnsIpPort;
+				PXCH_UINT32 dwDnsCidr;
+				if (OptionGetIpPortValueAfterOptionName(&DnsIpPort, &dwDnsCidr, sOptionNameEnd, NULL, FALSE, FALSE) == 0) {
+					if (DnsIpPort.CommonHeader.wTag == PXCH_HOST_TYPE_IPV4) {
+						pPxchConfig->CustomDnsServer = *(PXCH_IP_ADDRESS*)&DnsIpPort;
+						pPxchConfig->dwCustomDnsServerPort = ntohs(DnsIpPort.CommonHeader.wPort);
+						if (pPxchConfig->dwCustomDnsServerPort == 0) pPxchConfig->dwCustomDnsServerPort = 53;
+						pPxchConfig->dwHasCustomDnsServer = TRUE;
+					} else {
+						pszParseErrorMessage = L"dns_server only supports IPv4 addresses!";
+						goto err_invalid_config_with_msg;
+					}
+				} else {
+					pszParseErrorMessage = L"Invalid dns_server address!";
+					goto err_invalid_config_with_msg;
+				}
+			}
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"remote_dns_subnet")) {
 			if (OptionGetNumberValueAfterOptionName(&lValue, sOptionNameEnd, NULL, 0, 255) == -1) goto err_invalid_config_with_msg;
 			pPxchConfig->dwFakeIpv4PrefixLength = 8;

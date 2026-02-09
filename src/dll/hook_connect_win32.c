@@ -1194,6 +1194,7 @@ err_return:
 PXCH_DLL_API int Ws2_32_DirectConnect(void* pTempData, PXCH_UINT_PTR s, const PXCH_PROXY_DATA* pProxy /* Mostly myself */, const PXCH_HOST_PORT* pHostPort, int iAddrLen)
 {
 	int iReturn;
+	int iTargetFamily;
 
 	ODBGSTRLOGD(L"Ws2_32_DirectConnect 0 %p", pHostPort);
 	if (HostIsType(INVALID, *pHostPort)) {
@@ -1212,6 +1213,7 @@ PXCH_DLL_API int Ws2_32_DirectConnect(void* pTempData, PXCH_UINT_PTR s, const PX
 
 		// FUNCIPCLOGW(L"Warning connecting directly: address is hostname.");
 		
+		// Support dual-stack: try matching original family first, then fall back to any
 		AddrInfoHints.ai_family = AF_UNSPEC;
 		AddrInfoHints.ai_flags = 0;
 		AddrInfoHints.ai_protocol = IPPROTO_TCP;
@@ -1222,15 +1224,18 @@ PXCH_DLL_API int Ws2_32_DirectConnect(void* pTempData, PXCH_UINT_PTR s, const PX
 			return SOCKET_ERROR;
 		}
 
+		// Prefer matching original address family for dual-stack compatibility
+		iTargetFamily = ((const PXCH_TEMP_DATA*)pTempData)->CommonHeader.iOriginalAddrFamily;
 		for (pTempAddrInfo = pAddrInfo; pTempAddrInfo; pTempAddrInfo = pTempAddrInfo->ai_next) {
-			if (pTempAddrInfo->ai_family == ((const PXCH_TEMP_DATA*)pTempData)->CommonHeader.iOriginalAddrFamily) {
+			if (pTempAddrInfo->ai_family == iTargetFamily) {
 				break;
 			}
 		}
 
+		// Fall back to any available address family (enables IPv6 proxy with IPv4 targets)
 		if (pTempAddrInfo == NULL) {
-			WSASetLastError(WSAEADDRNOTAVAIL);
-			return SOCKET_ERROR;
+			pTempAddrInfo = pAddrInfo;
+			FUNCIPCLOGD(L"Ws2_32_DirectConnect: original AF %d not found, using AF %d (dual-stack fallback)", iTargetFamily, pTempAddrInfo->ai_family);
 		}
 
 		CopyMemory(&NewHostPort, pTempAddrInfo->ai_addr, pTempAddrInfo->ai_addrlen);
@@ -2211,6 +2216,9 @@ PROXY_FUNC2(Ws2_32, gethostbyname)
 	// Print DNS query
 	FUNCIPCLOGD(L"Ws2_32.dll gethostbyname(" WPRS L") called", name);
 
+	// Initialize DNS cache on first use
+	DnsCacheInit();
+
 	ZeroMemory(&IpPortResolvedByHosts, sizeof(IpPortResolvedByHosts));
 	ZeroMemory(&RequeryAddrInfoHints, sizeof(RequeryAddrInfoHints));
 	RequeryAddrInfoHints.ai_family = AF_UNSPEC;
@@ -2227,6 +2235,18 @@ PROXY_FUNC2(Ws2_32, gethostbyname)
 	if (g_pPxchConfig->dwWillResolveLocallyIfMatchHosts && ResolveByHostsFile((PXCH_IP_ADDRESS*)&IpPortResolvedByHosts, &OriginalHostname, AF_INET)) {
 		bShouldReturnHostsResult = TRUE;
 		bShouldUseHostsResult = TRUE;
+	}
+
+	// Check DNS cache before doing any resolution
+	if (!bShouldReturnHostsResult && g_pPxchConfig->dwDnsCacheTtlSeconds > 0) {
+		PXCH_IP_ADDRESS CachedIpv4;
+		BOOL bCacheHasIpv4 = FALSE, bCacheHasIpv6 = FALSE;
+		if (DnsCacheLookup(&OriginalHostname, &CachedIpv4, NULL, &bCacheHasIpv4, &bCacheHasIpv6) && bCacheHasIpv4) {
+			IpPortResolvedByHosts = *(PXCH_IP_PORT*)&CachedIpv4;
+			bShouldReturnHostsResult = TRUE;
+			bShouldUseHostsResult = TRUE;
+			FUNCIPCLOGD(L"gethostbyname: using DNS cache for %ls", OriginalHostname.szValue);
+		}
 	}
 
 	// Decide if we should use original result
@@ -2277,6 +2297,22 @@ PROXY_FUNC2(Ws2_32, gethostbyname)
 
 	if (bShouldUseResolvedResult && !bShouldUseHostsResult) {
 		pResolvedHostent = NULL;
+
+		// Try SOCKS5 UDP Associate DNS resolution first if enabled
+		if (g_pPxchConfig->dwWillUseUdpAssociateAsRemoteDns) {
+			PXCH_IP_ADDRESS UdpIpv4, UdpIpv6;
+			BOOL bUdpHasIpv4 = FALSE, bUdpHasIpv6 = FALSE;
+			if (ResolveDnsViaSocks5UdpAssociate(&OriginalHostname, &UdpIpv4, &UdpIpv6, &bUdpHasIpv4, &bUdpHasIpv6) && bUdpHasIpv4) {
+				IpPortResolvedByHosts = *(PXCH_IP_PORT*)&UdpIpv4;
+				bShouldReturnHostsResult = TRUE;
+				bShouldUseHostsResult = TRUE;
+				bShouldUseResolvedResult = FALSE;
+				bShouldReturnResolvedResult = FALSE;
+				FUNCIPCLOGD(L"gethostbyname: resolved via SOCKS5 UDP ASSOCIATE for %ls", OriginalHostname.szValue);
+				goto after_resolve;
+			}
+		}
+
 		pResolvedHostent = orig_fpWs2_32_gethostbyname(name);
 		iWSALastError = WSAGetLastError();
 	    dwLastError = GetLastError();
@@ -2293,8 +2329,20 @@ PROXY_FUNC2(Ws2_32, gethostbyname)
 			bShouldReturnFakeIp = FALSE;
 			bShouldReturnResolvedResult = TRUE;
 		}
+
+		// Cache the resolved result
+		if (dwIpNum > 0 && g_pPxchConfig->dwDnsCacheTtlSeconds > 0) {
+			PXCH_IP_ADDRESS* pFirstIpv4 = NULL;
+			for (dw = 0; dw < dwIpNum; dw++) {
+				if (Ips[dw].CommonHeader.wTag == PXCH_HOST_TYPE_IPV4) { pFirstIpv4 = &Ips[dw]; break; }
+			}
+			if (pFirstIpv4) {
+				DnsCacheAdd(&OriginalHostname, pFirstIpv4, NULL, TRUE, FALSE);
+			}
+		}
 	}
 
+after_resolve:
 	if (bShouldUseHostsResult) {
 		pResolvedHostent = NULL;
 
@@ -2557,6 +2605,27 @@ PROXY_FUNC2(Ws2_32, GetAddrInfoW)
 		bShouldUseHostsResult = TRUE;
 	}
 
+	// Check DNS cache before doing any resolution
+	if (!bShouldReturnHostsResult && g_pPxchConfig->dwDnsCacheTtlSeconds > 0) {
+		PXCH_IP_ADDRESS CachedIpv4, CachedIpv6;
+		BOOL bCacheHasIpv4 = FALSE, bCacheHasIpv6 = FALSE;
+		if (DnsCacheLookup(&Hostname, &CachedIpv4, &CachedIpv6, &bCacheHasIpv4, &bCacheHasIpv6)) {
+			if ((pHintsCast->ai_family == AF_INET || pHintsCast->ai_family == AF_UNSPEC) && bCacheHasIpv4) {
+				IpPortResolvedByHosts = *(PXCH_IP_PORT*)&CachedIpv4;
+				IpPortResolvedByHosts.CommonHeader.wPort = HostPort.HostnamePort.wPort;
+				bShouldReturnHostsResult = TRUE;
+				bShouldUseHostsResult = TRUE;
+				FUNCIPCLOGD(L"GetAddrInfoW: using DNS cache for %ls", Hostname.szValue);
+			} else if (pHintsCast->ai_family == AF_INET6 && bCacheHasIpv6) {
+				IpPortResolvedByHosts = *(PXCH_IP_PORT*)&CachedIpv6;
+				IpPortResolvedByHosts.CommonHeader.wPort = HostPort.HostnamePort.wPort;
+				bShouldReturnHostsResult = TRUE;
+				bShouldUseHostsResult = TRUE;
+				FUNCIPCLOGD(L"GetAddrInfoW: using DNS cache (IPv6) for %ls", Hostname.szValue);
+			}
+		}
+	}
+
 	// Decide if we should use original result
 	if (!bShouldReturnHostsResult && !g_pPxchConfig->dwWillUseFakeIpAsRemoteDns) {
 		bShouldReturnResolvedResult = TRUE;
@@ -2618,7 +2687,32 @@ PROXY_FUNC2(Ws2_32, GetAddrInfoW)
 
 	if (bShouldUseResolvedResult && !bShouldUseHostsResult) {
 		pResolvedResultCast = NULL;
-		
+
+		// Try SOCKS5 UDP Associate DNS resolution first if enabled
+		if (g_pPxchConfig->dwWillUseUdpAssociateAsRemoteDns) {
+			PXCH_IP_ADDRESS UdpIpv4, UdpIpv6;
+			BOOL bUdpHasIpv4 = FALSE, bUdpHasIpv6 = FALSE;
+			if (ResolveDnsViaSocks5UdpAssociate(&Hostname, &UdpIpv4, &UdpIpv6, &bUdpHasIpv4, &bUdpHasIpv6)) {
+				BOOL bMatch = FALSE;
+				if ((pHintsCast->ai_family == AF_INET || pHintsCast->ai_family == AF_UNSPEC) && bUdpHasIpv4) {
+					IpPortResolvedByHosts = *(PXCH_IP_PORT*)&UdpIpv4;
+					bMatch = TRUE;
+				} else if ((pHintsCast->ai_family == AF_INET6 || pHintsCast->ai_family == AF_UNSPEC) && bUdpHasIpv6) {
+					IpPortResolvedByHosts = *(PXCH_IP_PORT*)&UdpIpv6;
+					bMatch = TRUE;
+				}
+				if (bMatch) {
+					IpPortResolvedByHosts.CommonHeader.wPort = HostPort.HostnamePort.wPort;
+					bShouldReturnHostsResult = TRUE;
+					bShouldUseHostsResult = TRUE;
+					bShouldUseResolvedResult = FALSE;
+					bShouldReturnResolvedResult = FALSE;
+					FUNCIPCLOGD(L"GetAddrInfoW: resolved via SOCKS5 UDP ASSOCIATE for %ls", Hostname.szValue);
+					goto after_resolve_gaiw;
+				}
+			}
+		}
+
 		iReturn = orig_fpWs2_32_GetAddrInfoW(pNodeName, pServiceName, pHints, &pResolvedResultCast);
 		iWSALastError = WSAGetLastError();
 		dwLastError = GetLastError();
@@ -2639,8 +2733,32 @@ PROXY_FUNC2(Ws2_32, GetAddrInfoW)
 			bShouldReturnFakeIp = FALSE;
 			bShouldReturnResolvedResult = TRUE;
 		}
+
+		// Cache successful resolution
+		if (pResolvedResultCast && g_pPxchConfig->dwDnsCacheTtlSeconds > 0) {
+			PADDRINFOW pTemp;
+			PXCH_IP_ADDRESS CacheIpv4, CacheIpv6;
+			BOOL bCacheHasIpv4 = FALSE, bCacheHasIpv6 = FALSE;
+			for (pTemp = pResolvedResultCast; pTemp; pTemp = pTemp->ai_next) {
+				if (pTemp->ai_family == AF_INET && !bCacheHasIpv4 && pTemp->ai_addrlen >= sizeof(struct sockaddr_in)) {
+					ZeroMemory(&CacheIpv4, sizeof(CacheIpv4));
+					CacheIpv4.CommonHeader.wTag = PXCH_HOST_TYPE_IPV4;
+					CopyMemory(&CacheIpv4.Sockaddr, pTemp->ai_addr, sizeof(struct sockaddr_in));
+					bCacheHasIpv4 = TRUE;
+				} else if (pTemp->ai_family == AF_INET6 && !bCacheHasIpv6 && pTemp->ai_addrlen >= sizeof(struct sockaddr_in6)) {
+					ZeroMemory(&CacheIpv6, sizeof(CacheIpv6));
+					CacheIpv6.CommonHeader.wTag = PXCH_HOST_TYPE_IPV6;
+					CopyMemory(&CacheIpv6.Sockaddr, pTemp->ai_addr, sizeof(struct sockaddr_in6));
+					bCacheHasIpv6 = TRUE;
+				}
+			}
+			if (bCacheHasIpv4 || bCacheHasIpv6) {
+				DnsCacheAdd(&Hostname, bCacheHasIpv4 ? &CacheIpv4 : NULL, bCacheHasIpv6 ? &CacheIpv6 : NULL, bCacheHasIpv4, bCacheHasIpv6);
+			}
+		}
 	}
 
+after_resolve_gaiw:
 	if (bShouldUseHostsResult) {
 		pResolvedResultCast = NULL;
 		IpPortResolvedByHosts.CommonHeader.wPort = HostPort.CommonHeader.wPort;
