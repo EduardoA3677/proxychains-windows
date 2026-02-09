@@ -143,6 +143,33 @@ For options, see `proxychains.conf`.
 
 Run `proxychains -h` for more command line argument options.
 
+# Key Features and Improvements
+
+## Cross-Architecture Support (New in this version!)
+
+The x64 build now automatically detects the target process architecture and 
+injects the appropriate DLL:
+- **x64 proxychains.exe** can inject into both 64-bit and 32-bit processes
+- Automatic architecture detection using `IsWow64Process()`
+- No need for separate x86 and x64 executables
+- Smart DLL path selection based on target process
+
+## Windows 11 Compatibility
+
+This version has been updated for full Windows 11 compatibility:
+- Works with Windows 11's enhanced security features
+- Tested on Windows 11 systems
+- Uses modern Windows APIs for system detection
+
+## Existing Features
+
+- Multiple SOCKS5 proxy chaining
+- Fake IP based remote DNS resolution
+- IPv4 and IPv6 support
+- Configurable timeout values
+- Rule-based proxy selection (IP range, domain)
+- Custom hosts file support
+
 # How It Works
 
 - Main program hooks `CreateProcessW` Win32 API call.

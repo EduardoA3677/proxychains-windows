@@ -1235,7 +1235,14 @@ err_general:
 err_insuf_buf:
 	return ERROR_INSUFFICIENT_BUFFER;
 err_dll_not_exist:
+#if defined(_M_X64) || defined(__x86_64__)
+	LOGE(L"Error initializing DLL: Required DLL not found.");
+	LOGE(L"Expected x64 DLL path: %ls", pPxchConfig->szHookDllPathX64);
+	LOGE(L"For cross-architecture support, also ensure x86 DLL exists at: %ls", pPxchConfig->szHookDllPathX86);
+#else
 	LOGE(L"Error initializing DLL: DLL not found.");
+	LOGE(L"Expected x86 DLL path: %ls", pPxchConfig->szHookDllPathX86);
+#endif
 	return ERROR_FILE_NOT_FOUND;
 err_read_config:
 	LOGE(L"Error reading configuration: %ls", FormatErrorToStr(dwLastError));
