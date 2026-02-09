@@ -15,8 +15,8 @@
 - [x] Implement round-robin proxy selection
 - [x] Add chain length configuration support
 - [x] Thread-safe proxy rotation
-- [ ] Persistent state for proxy rotation across processes
-- **Status**: Round-robin chain mode implemented with thread-safe InterlockedIncrement counter
+- [x] Persistent state for proxy rotation across processes
+- **Status**: Round-robin chain mode with named shared memory (Local\proxychains_rr_<pid>) for cross-process persistent counter
 - **Difficulty**: Medium
 - **Impact**: Medium - Load balancing across proxies
 
@@ -174,11 +174,11 @@
 
 ### User-Requested Features
 - [x] Support for authentication with proxy servers (username/password)
-- [ ] Whitelist/blacklist based on process name
+- [x] Whitelist/blacklist based on process name
 - [ ] Global system-wide proxying option
 - [ ] Browser extension integration
 - [ ] VPN-like system proxy configuration
-- **Status**: Proxy authentication implemented for SOCKS5 (username/password), SOCKS4 (userid), and HTTP (Basic auth)
+- **Status**: Proxy authentication implemented for SOCKS5/SOCKS4/HTTP. Process filtering via process_only (whitelist) and process_except (blacklist) config directives.
 - **Difficulty**: Various
 - **Impact**: Various - Based on user demand
 

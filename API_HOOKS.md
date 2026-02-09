@@ -33,7 +33,13 @@ This document describes the hooked Win32 API functions and proxy protocol implem
 
 | Function | DLL | Purpose |
 |----------|-----|---------|
-| `CreateProcessW()` | Kernel32.dll | Intercepts process creation to inject hook DLL into child processes |
+| `CreateProcessA()` | Kernel32.dll | Intercepts ANSI process creation to inject hook DLL into child processes |
+| `CreateProcessW()` | Kernel32.dll | Intercepts wide process creation to inject hook DLL into child processes |
+| `CreateProcessAsUserW()` | Advapi32.dll | Intercepts elevated process creation to inject hook DLL |
+
+All three hooks support process name filtering via `process_only`/`process_except` config directives.
+The `ShouldInjectProcess()` function extracts the executable name from `lpApplicationName` or `lpCommandLine`
+and performs case-insensitive matching against the configured filter list.
 
 ## Proxy Protocol Implementations
 
@@ -138,3 +144,30 @@ The `PROXYCHAINS_CONFIG` structure (defined in `defines_generic.h`) is shared be
 | `dwProxyHandshakeTimeoutMillisecond` | UINT32 | Handshake read timeout (default: 5000ms) |
 | `dwProxyNum` | UINT32 | Number of proxies in ProxyList |
 | `dwRuleNum` | UINT32 | Number of routing rules |
+| `dwProcessFilterMode` | UINT32 | Process filter mode: 0=none, 1=whitelist, 2=blacklist |
+| `dwProcessFilterCount` | UINT32 | Number of process name filter entries |
+| `szProcessFilterNames` | WCHAR[8][256] | Process name patterns for filtering |
+
+## Process Name Filtering
+
+Process name filtering allows controlling which child processes get injected with the hook DLL.
+
+### Configuration
+
+```ini
+# Whitelist mode: only inject into these processes
+process_only = curl.exe
+process_only = git.exe
+
+# OR blacklist mode: inject into all EXCEPT these
+process_except = explorer.exe
+process_except = svchost.exe
+```
+
+### Behavior
+
+- **Whitelist** (`process_only`): Only matching processes are injected. All others run without proxying.
+- **Blacklist** (`process_except`): All processes are injected EXCEPT matching ones.
+- **No filter** (default): All child processes are injected.
+- Matching is case-insensitive on the executable filename (not the full path).
+- Maximum 8 filter entries. Cannot mix `process_only` and `process_except`.

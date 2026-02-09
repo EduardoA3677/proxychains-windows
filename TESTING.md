@@ -378,6 +378,51 @@ A successful test should show:
 4. Check logs: failure count should increment for dead proxy
 5. Expected: `Strict chain: proxy 1 failed (failure count: 1)`
 
+## Testing Process Name Filtering
+
+### Test 19: Process Whitelist (process_only)
+
+1. Configure `proxychains.conf`:
+   ```
+   process_only = curl.exe
+   ```
+2. Run:
+   ```cmd
+   proxychains.exe cmd.exe /c "curl https://ifconfig.me && ping localhost"
+   ```
+3. Expected: curl.exe gets injected (proxied), ping.exe does NOT get injected
+4. Check logs: `Process filter: ping.exe not in whitelist, skipping injection`
+
+### Test 20: Process Blacklist (process_except)
+
+1. Configure `proxychains.conf`:
+   ```
+   process_except = notepad.exe
+   process_except = calc.exe
+   ```
+2. Run:
+   ```cmd
+   proxychains.exe cmd.exe /c "curl https://ifconfig.me && notepad"
+   ```
+3. Expected: curl.exe gets injected (proxied), notepad.exe does NOT get injected
+4. Check logs: `Process filter: notepad.exe matched blacklist entry, skipping injection`
+
+### Test 21: Persistent Round-Robin State
+
+1. Configure `proxychains.conf`:
+   ```
+   round_robin_chain
+   chain_len = 1
+   ```
+2. Add 3 proxies
+3. Run multiple commands in succession:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   ```
+4. Expected: Each command uses a different proxy (rotation persists across processes via shared memory)
+
 ## Reporting Issues
 
 If you encounter issues, please report with:
