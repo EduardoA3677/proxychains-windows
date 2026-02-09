@@ -1,8 +1,10 @@
-# GitHub Copilot Instructions for Proxychains-Windows
+# Proxychains-Windows - Custom Instructions for GitHub Copilot
 
-## Project Context
+> Repository-level instructions for GitHub Copilot to assist with proxychains-windows development
 
-This is **proxychains-windows**, a Windows port of proxychains-ng that provides SOCKS5 proxy chaining functionality through DLL injection and API hooking. The project enables transparent proxying of Windows applications by intercepting network-related Win32 API calls.
+## Project Overview
+
+**proxychains-windows** is a Windows port of proxychains-ng that provides SOCKS5 proxy chaining through DLL injection and Win32 API hooking. It enables transparent proxying of Windows applications by intercepting network-related system calls.
 
 ## Architecture Overview
 
@@ -290,20 +292,130 @@ When adding features:
 - `Ws2_32_LoopThroughProxyChain()` - Connect through proxy chain
 - `Socks5_Connect()` / `Socks5_Handshake()` - SOCKS5 protocol
 
-## Getting Help
+## Available MCP Tools
 
-- Check `doc/DEVNOTES.md` for developer notes
-- Review existing hooks for patterns
-- Search for similar functionality in proxychains-ng (Linux version)
-- Use Visual Studio debugger with debug builds
+When implementing features from TODO.md, you have access to these MCP (Model Context Protocol) tools:
+
+### File System Operations
+- `file-system-read_text_file` - Read source files
+- `file-system-edit_file` - Make surgical edits to files
+- `file-system-create_directory` - Create directories
+- `file-system-search_files` - Search for files by pattern
+- `file-system-list_directory` - List directory contents
+
+### Code Search and Analysis
+- `grep` - Search code with ripgrep (fast pattern matching)
+- `glob` - Find files by pattern (e.g., `**/*.c`, `src/**/*.h`)
+- `bash` - Run commands for analysis (git log, grep, etc.)
+
+### GitHub Integration
+- `github-mcp-server-get_file_contents` - Read files from GitHub
+- `github-mcp-server-search_code` - Search across GitHub repositories
+- `github-mcp-server-list_commits` - Review commit history
+
+### Memory and Knowledge
+- `memory-create_entities` - Store project knowledge
+- `memory-search_nodes` - Search stored information
+- `memory-add_observations` - Add notes about code patterns
+
+### Task Delegation
+- `task` - Delegate complex tasks to specialized agents
+  - Use `agent_type=general-purpose` for feature implementation
+  - Use `agent_type=explore` for codebase exploration
+  - Use `agent_type=code-review` for reviewing changes
+
+## Tool Usage Examples
+
+### Implementing a Feature from TODO.md
+
+```markdown
+Step 1: Search for related code
+@grep pattern="Ws2_32_LoopThroughProxyChain" path="src/dll"
+
+Step 2: Read implementation
+@file-system-read_text_file path="/path/to/src/dll/hook_connect_win32.c"
+
+Step 3: Make changes
+@file-system-edit_file path="/path/to/file.c"
+  old_str="// existing code"
+  new_str="// new implementation"
+
+Step 4: Update documentation
+@file-system-edit_file path="TODO.md"
+  old_str="- [ ] Feature name"
+  new_str="- [x] Feature name"
+```
+
+### Exploring the Codebase
+
+```markdown
+# Find all hook implementations
+@glob pattern="src/dll/hook_*.c"
+
+# Search for a specific function
+@grep pattern="InjectTargetProcess" path="src"
+
+# Review recent changes
+@bash command="git log --oneline -10"
+```
+
+### Delegating to Specialized Agent
+
+```markdown
+@task 
+  agent_type="general-purpose"
+  description="Implement dynamic chain"
+  prompt="Following the proxychains developer guidelines in .github/agents/proxychains-developer.md, implement dynamic chain support from TODO.md. This requires modifying hook_connect_win32.c to skip dead proxies and continue the chain."
+```
+
+## Best Practices
+
+### When Implementing Features
+
+1. **Always check TODO.md first** - Understand requirements and priority
+2. **Use grep/glob** to find related code before modifying
+3. **Read existing implementations** to understand patterns
+4. **Follow the coding style** documented here
+5. **Update documentation** (TODO.md, CHANGELOG.md, README.md)
+6. **Test both architectures** (x86 and x64)
+
+### Code Review Checklist
+
+- [ ] Both x86 and x64 architectures handled
+- [ ] Error handling added for all failure cases
+- [ ] Logging added using IPCLOG* macros
+- [ ] Memory/handles properly freed
+- [ ] Config option added if needed
+- [ ] Documentation updated (TODO, CHANGELOG)
+- [ ] Follows existing code style
+
+### When Stuck
+
+1. Use `@grep` to find similar implementations
+2. Use `@file-system-read_text_file` to review related code
+3. Use `@task agent_type=explore` to ask about codebase
+4. Review `.github/agents/proxychains-developer.md` for guidance
 
 ## Summary
 
-This is a complex low-level Windows project requiring:
-- Deep understanding of Win32 API
-- DLL injection techniques
-- Network programming (sockets, protocols)
-- Multi-architecture support
-- Careful memory and resource management
+This is a complex low-level Windows systems programming project. Key requirements:
 
-Always test thoroughly on both x86 and x64 targets. Use logging extensively. Handle errors gracefully. Document non-obvious code.
+- **Win32 API expertise** - Deep API knowledge required
+- **DLL injection** - Low-level process manipulation
+- **Multi-architecture** - Must support x86 and x64
+- **Network programming** - SOCKS5 protocol implementation
+- **Memory safety** - Careful resource management
+
+**Always:**
+- Test on both x86 and x64 targets
+- Use logging extensively (IPCLOG* macros)
+- Handle all error cases gracefully
+- Update TODO.md when completing features
+- Document non-obvious code with comments
+
+**Never:**
+- Break x86/x64 compatibility
+- Ignore error return values
+- Skip documentation updates
+- Introduce memory leaks
+- Remove existing functionality
