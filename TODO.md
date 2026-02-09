@@ -12,11 +12,11 @@
 - **Impact**: High - Better reliability when proxies fail
 
 ### Round Robin Chain Support
-- [ ] Implement round-robin proxy selection
-- [ ] Add chain length configuration support
-- [ ] Thread-safe proxy rotation
+- [x] Implement round-robin proxy selection
+- [x] Add chain length configuration support
+- [x] Thread-safe proxy rotation
 - [ ] Persistent state for proxy rotation across processes
-- **Status**: Not implemented
+- **Status**: Round-robin chain mode implemented with thread-safe InterlockedIncrement counter
 - **Difficulty**: Medium
 - **Impact**: Medium - Load balancing across proxies
 
@@ -39,12 +39,12 @@
 ## Medium Priority Features
 
 ### Configuration Improvements
-- [ ] Support for HTTP/HTTPS proxy (currently SOCKS5 only)
-- [ ] Support for SOCKS4/SOCKS4a proxies
+- [x] Support for HTTP/HTTPS proxy (HTTP CONNECT method)
+- [x] Support for SOCKS4/SOCKS4a proxies
 - [ ] Multiple configuration file profiles
 - [ ] Environment variable expansion in config
 - [ ] Reload configuration without restart
-- **Status**: Partially implemented (SOCKS5 only)
+- **Status**: SOCKS5, SOCKS4/SOCKS4a, and HTTP CONNECT proxies supported
 - **Difficulty**: Medium
 - **Impact**: Medium - More flexibility
 
@@ -122,12 +122,12 @@
 ## Bug Fixes & Improvements
 
 ### Known Issues
-- [ ] Domain name resolution should be case-insensitive
+- [x] Domain name resolution should be case-insensitive
 - [ ] Handle "fork-and-exit" child processes properly
 - [ ] Powershell wget compatibility issues
 - [ ] Better ConEmu compatibility (currently incompatible)
 - [ ] Handle Cygwin encoding issues completely
-- **Status**: Some documented in README To-do section
+- **Status**: Case-insensitive DNS fixed; others documented in README To-do section
 - **Difficulty**: Various
 - **Impact**: Various
 

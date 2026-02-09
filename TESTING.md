@@ -131,6 +131,61 @@ Both the parent (cmd.exe) and child (curl.exe) should be proxied.
 4. Check logs - different proxies should be selected each time
 5. Verify `chain_len` controls how many proxies are used per connection
 
+### Test 9: Round-Robin Chain Mode
+
+1. Configure `proxychains.conf`:
+   ```
+   round_robin_chain
+   chain_len = 1
+   ```
+2. Add multiple working proxies in `[ProxyList]`
+3. Test multiple times:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   proxychains.exe curl.exe https://ifconfig.me
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. Check logs - proxies should be selected sequentially (0, 1, 2, 0, 1, 2, ...)
+
+### Test 10: SOCKS4 Proxy
+
+1. Configure `proxychains.conf` with a SOCKS4 proxy:
+   ```
+   [ProxyList]
+   socks4 proxy-server 1080
+   ```
+2. Test:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+3. SOCKS4 only supports IPv4 connections; IPv6 targets will fail with an appropriate error
+
+### Test 11: HTTP CONNECT Proxy
+
+1. Configure `proxychains.conf` with an HTTP proxy:
+   ```
+   [ProxyList]
+   http proxy-server 8080
+   ```
+2. For authenticated proxy:
+   ```
+   [ProxyList]
+   http proxy-server 8080 username password
+   ```
+3. Test:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+
+### Test 12: Case-Insensitive DNS
+
+1. Add entries to custom hosts file with mixed case:
+   ```
+   127.0.0.1 MyHost.Example.COM
+   ```
+2. Test that resolving `myhost.example.com` (lowercase) matches the entry
+3. Verify the connection is handled correctly
+
 ## Windows 11 Specific Testing
 
 ### Test on Windows 11

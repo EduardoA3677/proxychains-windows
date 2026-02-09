@@ -782,9 +782,12 @@ PXCH_DLL_API int Ws2_32_HttpConnect(void* pTempData, PXCH_UINT_PTR s, const PXCH
 			c = (i < cbAuthLen) ? (unsigned char)szAuth[i++] : 0;
 			szAuthBase64[j++] = b64chars[(a >> 2) & 0x3F];
 			szAuthBase64[j++] = b64chars[((a & 0x3) << 4) | ((b >> 4) & 0xF)];
-			szAuthBase64[j++] = ((i - 1) > cbAuthLen) ? '=' : b64chars[((b & 0xF) << 2) | ((c >> 6) & 0x3)];
-			szAuthBase64[j++] = ((i - 2) >= cbAuthLen && (cbAuthLen % 3) != 0) ? '=' : (i > cbAuthLen ? '=' : b64chars[c & 0x3F]);
+			szAuthBase64[j++] = b64chars[((b & 0xF) << 2) | ((c >> 6) & 0x3)];
+			szAuthBase64[j++] = b64chars[c & 0x3F];
 		}
+		/* Apply padding */
+		if (cbAuthLen % 3 >= 1) szAuthBase64[j - 1] = '=';
+		if (cbAuthLen % 3 == 1) szAuthBase64[j - 2] = '=';
 		szAuthBase64[j] = '\0';
 		StringCchPrintfA(SendBuf, _countof(SendBuf),
 			"CONNECT %s HTTP/1.1\r\n"

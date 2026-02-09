@@ -7,7 +7,10 @@ All notable changes to proxychains-windows will be documented in this file.
 ### Added
 - **Dynamic Chain Support**: New `dynamic_chain` mode that skips dead/unreachable proxies and continues with alive ones. At least one proxy must be online for the chain to work.
 - **Random Chain Support**: New `random_chain` mode that randomly selects proxies from the list. Configurable `chain_len` parameter controls how many proxies are used per connection.
-- **Chain Type Configuration**: Three chain modes now supported: `strict_chain` (default, all proxies must be online), `dynamic_chain` (skip dead proxies), and `random_chain` (random proxy selection).
+- **Round-Robin Chain Support**: New `round_robin_chain` mode that cycles through proxies sequentially with thread-safe rotation using `InterlockedIncrement`. Configurable `chain_len` parameter.
+- **Chain Type Configuration**: Four chain modes now supported: `strict_chain` (default, all proxies must be online), `dynamic_chain` (skip dead proxies), `random_chain` (random proxy selection), and `round_robin_chain` (sequential rotation).
+- **SOCKS4/SOCKS4a Proxy Support**: New `socks4` proxy type supporting both SOCKS4 (IPv4 only) and SOCKS4a (hostname resolution on proxy server). Optional userid for ident-based authentication.
+- **HTTP CONNECT Proxy Support**: New `http` proxy type using HTTP CONNECT method for tunneling. Supports Basic authentication with username/password.
 - **Unified Binary Support**: x64 build now automatically detects and injects into both x64 and x86 (32-bit) processes
 - **Automatic Architecture Detection**: Uses `IsWow64Process()` to determine target process architecture
 - **Smart DLL Selection**: Automatically selects correct hook DLL (x86 or x64) based on target process
@@ -31,6 +34,9 @@ All notable changes to proxychains-windows will be documented in this file.
 - **Logging**: Added architecture detection logging showing which DLL is being used
 - **Documentation**: Removed outdated warnings about requiring matching architecture executables
 - **User Experience**: Single executable can now handle all scenarios (no need for separate x86/x64 versions)
+
+### Fixed
+- **Case-insensitive DNS**: Domain name resolution in hosts file lookup and fake IP mapping now uses case-insensitive comparison (`StrCmpIW` instead of `StrCmpW`), matching RFC behavior
 
 ### Technical Details
 
