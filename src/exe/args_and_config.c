@@ -626,8 +626,14 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	if (FAILED(StringCchCatA(szHelperX86CommandLine, PXCH_MAX_HELPER_PATH_BUFSIZE, PXCH_HELPER_X86_COMMANDLINE_SUFFIX))) goto err_insuf_buf;
 
 #if defined(_M_X64) || defined(__x86_64__)
+	// x64 build: Require x64 DLL, warn if x86 DLL missing (limits to 64-bit injection only)
 	if (!PathFileExistsW(pPxchConfig->szHookDllPathX64)) goto err_dll_not_exist;
+	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) {
+		LOGW(L"Warning: x86 DLL not found. Will not be able to inject into 32-bit processes.");
+		LOGW(L"Expected path: %ls", pPxchConfig->szHookDllPathX86);
+	}
 #else
+	// x86 build: Only check x86 DLL (cannot inject into x64 processes anyway)
 	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) goto err_dll_not_exist;
 #endif
 	if (!PathFileExistsW(pPxchConfig->szMinHookDllPathX64)) StringCchCopyW(pPxchConfig->szMinHookDllPathX64, PXCH_MAX_DLL_PATH_BUFSIZE, g_szMinHookDllFileNameX64);
@@ -1229,7 +1235,14 @@ err_general:
 err_insuf_buf:
 	return ERROR_INSUFFICIENT_BUFFER;
 err_dll_not_exist:
+#if defined(_M_X64) || defined(__x86_64__)
+	LOGE(L"Error initializing DLL: Required DLL not found.");
+	LOGE(L"Expected x64 DLL path: %ls", pPxchConfig->szHookDllPathX64);
+	LOGE(L"For cross-architecture support, also ensure x86 DLL exists at: %ls", pPxchConfig->szHookDllPathX86);
+#else
 	LOGE(L"Error initializing DLL: DLL not found.");
+	LOGE(L"Expected x86 DLL path: %ls", pPxchConfig->szHookDllPathX86);
+#endif
 	return ERROR_FILE_NOT_FOUND;
 err_read_config:
 	LOGE(L"Error reading configuration: %ls", FormatErrorToStr(dwLastError));

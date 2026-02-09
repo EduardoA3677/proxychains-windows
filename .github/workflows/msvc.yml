@@ -1,6 +1,6 @@
 name: C/C++ CI
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -9,13 +9,43 @@ jobs:
     
     steps:
     - uses: actions/checkout@v2
-    - name: update submodules 
+    
+    - name: Update submodules 
       run: |
-        git submodule update --init --recursive --remote
-      shell: cmd
-    - name: build
-      run: |
-        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\IDE\devenv.com" %GITHUB_WORKSPACE%\proxychains.exe.sln /build "Release^|x64"
+        git submodule update --init --recursive
       shell: cmd
       
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+      
+    - name: Build x64
+      run: msbuild proxychains.exe.sln /p:Configuration=Release /p:Platform=x64
+      shell: cmd
+      
+    - name: Build x86
+      run: msbuild proxychains.exe.sln /p:Configuration=Release /p:Platform=x86
+      shell: cmd
+    
+    - name: Prepare release package
+      run: |
+        mkdir release-package
+        copy win32_output\proxychains_win32_x64.exe release-package\proxychains.exe
+        copy win32_output\proxychains_hook_x64.dll release-package\
+        copy win32_output\proxychains_hook_x86.dll release-package\
+        if exist win32_output\MinHook.x64.dll copy win32_output\MinHook.x64.dll release-package\
+        if exist win32_output\MinHook.x86.dll copy win32_output\MinHook.x86.dll release-package\
+        copy proxychains.conf release-package\
+        copy PACKAGE_README.md release-package\README.txt
+        copy README.md release-package\
+        copy CHANGELOG.md release-package\
+        copy TESTING.md release-package\
+        copy COPYING release-package\
+      shell: cmd
+      
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: proxychains-windows-unified
+        path: release-package/
+        retention-days: 90
 
