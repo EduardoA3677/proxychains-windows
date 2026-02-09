@@ -266,6 +266,12 @@
     <ClInclude Include="..\include\utlist.h" />
     <ClInclude Include="..\include\ut_helpers.h" />
     <ClInclude Include="..\include\version.h" />
+    <ClInclude Include="..\include\embedded_resources.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="proxychains.exe.rc">
+      <PreprocessorDefinitions Condition="'$(EmbedDlls)'=='true'">PXCH_EMBED_DLLS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

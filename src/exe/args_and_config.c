@@ -33,6 +33,7 @@
 #include "log_win32.h"
 #include "hookdll_win32.h"
 #include "hookdll_util_win32.h"
+#include "embedded_resources.h"
 
 #ifndef __CYGWIN__
 #pragma comment(lib, "Shlwapi.lib")
@@ -563,6 +564,93 @@ void PrintConfiguration(PROXYCHAINS_CONFIG* pPxchConfig)
 	LOGD(L"PXCH_CONFIG_EXTRA_SIZE_G: " WPRDW, PXCH_CONFIG_EXTRA_SIZE_G);
 }
 
+#ifndef __CYGWIN__
+static BOOL ExtractEmbeddedDll(UINT uResourceId, const WCHAR* szOutputPath)
+{
+	HRSRC hRes;
+	HGLOBAL hResData;
+	LPVOID pData;
+	DWORD dwSize;
+	HANDLE hFile;
+	DWORD dwWritten;
+
+	hRes = FindResourceW(NULL, MAKEINTRESOURCEW(uResourceId), PXCH_EMBEDDED_DLL_TYPE);
+	if (!hRes) {
+		LOGV(L"Embedded DLL resource " WPRDW L" not found", uResourceId);
+		return FALSE;
+	}
+
+	hResData = LoadResource(NULL, hRes);
+	if (!hResData) {
+		LOGW(L"Failed to load embedded DLL resource " WPRDW, uResourceId);
+		return FALSE;
+	}
+
+	pData = LockResource(hResData);
+	dwSize = SizeofResource(NULL, hRes);
+	if (!pData || dwSize == 0) {
+		LOGW(L"Failed to access embedded DLL resource " WPRDW, uResourceId);
+		return FALSE;
+	}
+
+	hFile = CreateFileW(szOutputPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE) {
+		LOGW(L"Failed to create file for embedded DLL: %ls", szOutputPath);
+		return FALSE;
+	}
+
+	if (!WriteFile(hFile, pData, dwSize, &dwWritten, NULL) || dwWritten != dwSize) {
+		LOGW(L"Failed to write embedded DLL to: %ls", szOutputPath);
+		CloseHandle(hFile);
+		DeleteFileW(szOutputPath);
+		return FALSE;
+	}
+
+	CloseHandle(hFile);
+	LOGD(L"Extracted embedded DLL to: %ls (" WPRDW L" bytes)", szOutputPath, dwSize);
+	return TRUE;
+}
+
+static BOOL EnsureDllFromResources(PROXYCHAINS_CONFIG* pPxchConfig)
+{
+	WCHAR szTempDir[MAX_PATH];
+	WCHAR szTempPath[MAX_PATH];
+	DWORD dwRet;
+	BOOL bExtractedAny = FALSE;
+
+	dwRet = GetTempPathW(MAX_PATH, szTempDir);
+	if (dwRet == 0 || dwRet >= MAX_PATH) return FALSE;
+
+	if (FAILED(StringCchCatW(szTempDir, MAX_PATH, L"proxychains\\"))) return FALSE;
+
+	CreateDirectoryW(szTempDir, NULL);
+
+	// Extract x64 hook DLL if not found beside exe
+	if (!PathFileExistsW(pPxchConfig->szHookDllPathX64)) {
+		if (FAILED(StringCchCopyW(szTempPath, MAX_PATH, szTempDir))) return FALSE;
+		if (FAILED(StringCchCatW(szTempPath, MAX_PATH, g_szHookDllFileNameX64))) return FALSE;
+
+		if (ExtractEmbeddedDll(IDR_HOOK_DLL_X64, szTempPath)) {
+			StringCchCopyW(pPxchConfig->szHookDllPathX64, PXCH_MAX_DLL_PATH_BUFSIZE, szTempPath);
+			bExtractedAny = TRUE;
+		}
+	}
+
+	// Extract x86 hook DLL if not found beside exe
+	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) {
+		if (FAILED(StringCchCopyW(szTempPath, MAX_PATH, szTempDir))) return FALSE;
+		if (FAILED(StringCchCatW(szTempPath, MAX_PATH, g_szHookDllFileNameX86))) return FALSE;
+
+		if (ExtractEmbeddedDll(IDR_HOOK_DLL_X86, szTempPath)) {
+			StringCchCopyW(pPxchConfig->szHookDllPathX86, PXCH_MAX_DLL_PATH_BUFSIZE, szTempPath);
+			bExtractedAny = TRUE;
+		}
+	}
+
+	return bExtractedAny;
+}
+#endif
+
 DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* pTempPxchConfig)
 {
 	DWORD dwLastError;
@@ -627,6 +715,12 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 
 #if defined(_M_X64) || defined(__x86_64__)
 	// x64 build: Require x64 DLL, warn if x86 DLL missing (limits to 64-bit injection only)
+#ifndef __CYGWIN__
+	if (!PathFileExistsW(pPxchConfig->szHookDllPathX64) || !PathFileExistsW(pPxchConfig->szHookDllPathX86)) {
+		// Try extracting embedded DLLs from exe resources
+		EnsureDllFromResources(pPxchConfig);
+	}
+#endif
 	if (!PathFileExistsW(pPxchConfig->szHookDllPathX64)) goto err_dll_not_exist;
 	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) {
 		LOGW(L"Warning: x86 DLL not found. Will not be able to inject into 32-bit processes.");
@@ -634,6 +728,12 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	}
 #else
 	// x86 build: Only check x86 DLL (cannot inject into x64 processes anyway)
+#ifndef __CYGWIN__
+	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) {
+		// Try extracting embedded DLL from exe resources
+		EnsureDllFromResources(pPxchConfig);
+	}
+#endif
 	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) goto err_dll_not_exist;
 #endif
 	if (!PathFileExistsW(pPxchConfig->szMinHookDllPathX64)) StringCchCopyW(pPxchConfig->szMinHookDllPathX64, PXCH_MAX_DLL_PATH_BUFSIZE, g_szMinHookDllFileNameX64);
