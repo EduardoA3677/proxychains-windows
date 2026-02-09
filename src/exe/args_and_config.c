@@ -695,6 +695,10 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 			bIntoProxyList = TRUE;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks5")) {
 			dwProxyNum++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4")) {
+			dwProxyNum++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4a")) {
+			dwProxyNum++;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"http")) {
 			dwProxyNum++;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"https")) {
@@ -1052,6 +1056,69 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 			StringCchCopyA(pHttp->Ws2_32_ConnectFunctionName, _countof(pHttp->Ws2_32_ConnectFunctionName), "Ws2_32_HttpConnect");
 			StringCchCopyA(pHttp->Ws2_32_HandshakeFunctionName, _countof(pHttp->Ws2_32_HandshakeFunctionName), "Ws2_32_HttpHandshake");
 			pHttp->iAddrLen = sizeof(PXCH_HOST_PORT);
+			dwProxyCounter++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4") || WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4a")) {
+			WCHAR* sHostStart;
+			WCHAR* sHostEnd;
+			WCHAR* sPortStart;
+			WCHAR* sPortEnd;
+			WCHAR* sUserIdStart;
+			WCHAR* sUserIdEnd;
+			long lPort;
+			BOOL bIsSocks4a = WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4a");
+
+			PXCH_PROXY_SOCKS4_DATA* pSocks4 = &PXCH_CONFIG_PROXY_ARR(pPxchConfig)[dwProxyCounter].Socks4;
+
+			pSocks4->dwTag = PXCH_PROXY_TYPE_SOCKS4;
+
+			sHostStart = ConsumeStringInSet(sOptionNameEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sHostEnd = ConsumeStringUntilSet(sHostStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sHostStart == sHostEnd) {
+				pszParseErrorMessage = bIsSocks4a ? L"SOCKS4A server host missing" : L"SOCKS4 server host missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetIpPortValue((PXCH_IP_PORT*)&pSocks4->HostPort, NULL, sHostStart, sHostEnd, FALSE, TRUE) == 0) {
+				if (PXCH_CONFIG_PROXY_ARR(pPxchConfig)[dwProxyCounter].Socks4.HostPort.CommonHeader.wPort != 0) {
+					pszParseErrorMessage = bIsSocks4a ? L"SOCKS4A server host address should not have port" : L"SOCKS4 server host address should not have port";
+					goto err_invalid_config_with_msg;
+				}
+			} else {
+				pSocks4->HostPort.HostnamePort.wTag = PXCH_HOST_TYPE_HOSTNAME;
+				StringCchCopyNW(pSocks4->HostPort.HostnamePort.szValue, _countof(pSocks4->HostPort.HostnamePort.szValue), sHostStart, sHostEnd - sHostStart);
+			}
+
+			sPortStart = ConsumeStringInSet(sHostEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sPortEnd = ConsumeStringUntilSet(sPortStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sPortStart == sPortEnd) {
+				pszParseErrorMessage = bIsSocks4a ? L"SOCKS4A server port missing" : L"SOCKS4 server port missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetNumberValue(&lPort, sPortStart, sPortEnd, 1, 65535, TRUE)) {
+				goto err_invalid_config_with_msg;
+			}
+
+			pSocks4->HostPort.CommonHeader.wPort = ntohs((PXCH_UINT16)lPort);
+
+			sUserIdStart = ConsumeStringInSet(sPortEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sUserIdEnd = ConsumeStringUntilSet(sUserIdStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (*sUserIdStart == L'\0' || sUserIdStart == sUserIdEnd) goto socks4_end;
+
+			StringCchPrintfA(pSocks4->szUserId, _countof(pSocks4->szUserId), "%.*ls", sUserIdEnd - sUserIdStart, sUserIdStart);
+				
+			if (*ConsumeStringInSet(sUserIdEnd, NULL, PXCH_CONFIG_PARSE_WHITE) != L'\0') {
+				pszParseErrorMessage = bIsSocks4a ? L"Extra character after socks4a server definition" : L"Extra character after socks4 server definition";
+				goto err_invalid_config_with_msg;
+			}
+
+		socks4_end:
+			StringCchCopyA(pSocks4->Ws2_32_ConnectFunctionName, _countof(pSocks4->Ws2_32_ConnectFunctionName), "Ws2_32_Socks4Connect");
+			StringCchCopyA(pSocks4->Ws2_32_HandshakeFunctionName, _countof(pSocks4->Ws2_32_HandshakeFunctionName), "Ws2_32_Socks4Handshake");
+			pSocks4->iAddrLen = sizeof(PXCH_HOST_PORT);
 			dwProxyCounter++;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"localnet")) {
 			PXCH_RULE* pRule = &PXCH_CONFIG_RULE_ARR(pPxchConfig)[dwRuleCounter];

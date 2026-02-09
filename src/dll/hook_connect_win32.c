@@ -962,6 +962,142 @@ PXCH_DLL_API int Ws2_32_HttpHandshake(void* pTempData, PXCH_UINT_PTR s, const PX
 	return 0;
 }
 
+PXCH_DLL_API int Ws2_32_Socks4Connect(void* pTempData, PXCH_UINT_PTR s, const PXCH_PROXY_DATA* pProxy /* Mostly myself */, const PXCH_HOST_PORT* pHostPort, int iAddrLen)
+{
+	const struct sockaddr_in* pSockAddrIpv4;
+	const PXCH_HOSTNAME_PORT* pAddrHostname;
+	char* pszHostnameEnd;
+	int iReturn;
+	char SendBuf[PXCH_MAX_HOSTNAME_BUFSIZE + 32];
+	char RecvBuf[8];
+	int iWSALastError;
+	DWORD dwLastError;
+	size_t cbUserIdLength;
+	unsigned char chUserIdLength;
+	BOOL bUseSocks4a = FALSE;
+
+	if (HostIsType(IPV6, *pHostPort)) {
+		FUNCIPCLOGW(L"Error connecting through SOCKS4: IPv6 not supported by SOCKS4");
+		WSASetLastError(WSAEAFNOSUPPORT);
+		return SOCKET_ERROR;
+	}
+
+	if (!HostIsType(IPV4, *pHostPort) && !HostIsType(HOSTNAME, *pHostPort)) {
+		FUNCIPCLOGW(L"Error connecting through SOCKS4: address is neither hostname nor IPv4");
+		WSASetLastError(WSAEAFNOSUPPORT);
+		return SOCKET_ERROR;
+	}
+
+	FUNCIPCLOGD(L"Ws2_32_Socks4Connect(%ls)", FormatHostPortToStr(pHostPort, iAddrLen));
+
+	// Build SOCKS4 request: VER(1) CMD(1) PORT(2) IP(4) USERID(variable) NULL(1)
+	// For SOCKS4a: Use IP 0.0.0.x and send hostname after NULL
+	SendBuf[0] = 0x04;  // SOCKS version 4
+	SendBuf[1] = 0x01;  // CONNECT command
+
+	if (HostIsType(IPV4, *pHostPort)) {
+		pSockAddrIpv4 = (const struct sockaddr_in*)pHostPort;
+		
+		// Port (network order)
+		CopyMemory(SendBuf + 2, &pSockAddrIpv4->sin_port, 2);
+		// IPv4 address
+		CopyMemory(SendBuf + 4, &pSockAddrIpv4->sin_addr, 4);
+		bUseSocks4a = FALSE;
+	} else if (HostIsType(HOSTNAME, *pHostPort)) {
+		pAddrHostname = (const PXCH_HOSTNAME_PORT*)pHostPort;
+		
+		// Port (network order)
+		CopyMemory(SendBuf + 2, &pAddrHostname->wPort, 2);
+		// For SOCKS4a: Use 0.0.0.x (where x != 0) to signal hostname follows
+		SendBuf[4] = 0x00;
+		SendBuf[5] = 0x00;
+		SendBuf[6] = 0x00;
+		SendBuf[7] = 0x01;
+		bUseSocks4a = TRUE;
+	} else goto err_not_supported;
+
+	// Add user ID
+	if (pProxy->Socks4.szUserId[0]) {
+		StringCchLengthA(pProxy->Socks4.szUserId, _countof(pProxy->Socks4.szUserId), &cbUserIdLength);
+		chUserIdLength = (unsigned char)cbUserIdLength;
+		CopyMemory(SendBuf + 8, pProxy->Socks4.szUserId, chUserIdLength);
+		SendBuf[8 + chUserIdLength] = 0x00;  // NULL terminator
+	} else {
+		SendBuf[8] = 0x00;  // Empty user ID with NULL terminator
+		chUserIdLength = 0;
+	}
+
+	// For SOCKS4a: Add hostname after NULL
+	if (bUseSocks4a) {
+		pAddrHostname = (const PXCH_HOSTNAME_PORT*)pHostPort;
+		StringCchPrintfExA(SendBuf + 9 + chUserIdLength, PXCH_MAX_HOSTNAME_BUFSIZE, 
+			&pszHostnameEnd, NULL, 0, "%ls", pAddrHostname->szValue);
+		*(pszHostnameEnd) = 0x00;  // NULL terminator for hostname
+		
+		if ((iReturn = Ws2_32_LoopSend(pTempData, s, SendBuf, (int)(pszHostnameEnd + 1 - SendBuf))) == SOCKET_ERROR) 
+			goto err_general;
+	} else {
+		if ((iReturn = Ws2_32_LoopSend(pTempData, s, SendBuf, 9 + chUserIdLength)) == SOCKET_ERROR) 
+			goto err_general;
+	}
+
+	// Receive response: VER(1) REP(1) PORT(2) IP(4)
+	if ((iReturn = Ws2_32_LoopRecv(pTempData, s, RecvBuf, 8)) == SOCKET_ERROR) goto err_general;
+
+	// Check response
+	if (RecvBuf[0] != 0x00) {
+		FUNCIPCLOGW(L"SOCKS4 response invalid: version byte should be 0");
+		goto err_data_invalid;
+	}
+
+	if (RecvBuf[1] != 0x5A) {  // 0x5A = request granted
+		FUNCIPCLOGW(L"SOCKS4 connection rejected: code 0x%02X", (unsigned char)RecvBuf[1]);
+		goto err_data_invalid;
+	}
+
+	FUNCIPCLOGI(L"SOCKS4%ls connection successful to %ls", bUseSocks4a ? L"A" : L"", 
+		FormatHostPortToStr(pHostPort, iAddrLen));
+
+	SetLastError(NO_ERROR);
+	WSASetLastError(NO_ERROR);
+	return 0;
+
+err_not_supported:
+	FUNCIPCLOGW(L"Error connecting through SOCKS4: addresses not implemented");
+	iReturn = SOCKET_ERROR;
+	dwLastError = ERROR_NOT_SUPPORTED;
+	iWSALastError = WSAEAFNOSUPPORT;
+	goto err_return;
+
+err_data_invalid:
+	FUNCIPCLOGW(L"SOCKS4 data format invalid or connection rejected");
+	iReturn = SOCKET_ERROR;
+	dwLastError = ERROR_ACCESS_DENIED;
+	iWSALastError = WSAEACCES;
+	goto err_return;
+
+err_general:
+	iWSALastError = WSAGetLastError();
+	dwLastError = GetLastError();
+err_return:
+	shutdown(s, SD_BOTH);
+	WSASetLastError(iWSALastError);
+	SetLastError(dwLastError);
+	return iReturn;
+}
+
+PXCH_DLL_API int Ws2_32_Socks4Handshake(void* pTempData, PXCH_UINT_PTR s, const PXCH_PROXY_DATA* pProxy /* Mostly myself */)
+{
+	// SOCKS4 doesn't have a separate handshake phase
+	// All is done in the connect request
+	FUNCIPCLOGD(L"Ws2_32_Socks4Handshake() - no handshake needed");
+	FUNCIPCLOGI(L"<> %ls", FormatHostPortToStr(&pProxy->CommonHeader.HostPort, pProxy->CommonHeader.iAddrLen));
+	
+	SetLastError(NO_ERROR);
+	WSASetLastError(NO_ERROR);
+	return 0;
+}
+
 int Ws2_32_GenericConnectTo(void* pTempData, PXCH_UINT_PTR s, PPXCH_CHAIN pChain, const PXCH_HOST_PORT* pHostPort, int iAddrLen)
 {
 	int iReturn;

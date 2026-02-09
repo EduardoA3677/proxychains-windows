@@ -2,6 +2,37 @@
 
 All notable changes to proxychains-windows will be documented in this file.
 
+## [Unreleased] - SOCKS4/SOCKS4a Proxy Support
+
+### Added
+- **SOCKS4 Proxy Support**: Full support for SOCKS4 protocol
+- **SOCKS4a Proxy Support**: SOCKS4a with hostname resolution capability
+- **SOCKS4 User ID**: Optional user ID field for SOCKS4/4a proxies
+- **Configuration Options**:
+  - `socks4` proxy type in configuration
+  - `socks4a` proxy type in configuration (with hostname support)
+  - User ID support for SOCKS4/4a proxies (optional)
+
+### Implementation Details
+- Added `PXCH_PROXY_TYPE_SOCKS4` constant
+- Added `PXCH_PROXY_SOCKS4_DATA` structure for SOCKS4 proxy configuration
+- Implemented `Ws2_32_Socks4Connect()` function for SOCKS4/4a protocol
+- Implemented `Ws2_32_Socks4Handshake()` function (no-op for SOCKS4)
+- Added SOCKS4/4a proxy parsing in configuration reader
+- SOCKS4a automatically used when hostname is provided
+- IPv4 addresses and hostnames supported (IPv6 not supported by SOCKS4 protocol)
+
+### Technical Details
+- SOCKS4 protocol: VER(1) CMD(1) PORT(2) IP(4) USERID(variable) NULL(1)
+- SOCKS4a extension: Uses IP 0.0.0.x to signal hostname follows
+- Response parsing: VER(1) REP(1) PORT(2) IP(4)
+- Success code: 0x5A (request granted)
+
+### Compatibility
+- Works with all chain modes (strict, dynamic, random, round-robin)
+- Can be mixed with SOCKS5, HTTP, and HTTPS in the same chain
+- Maintains backward compatibility with existing configurations
+
 ## [Unreleased] - HTTP/HTTPS Proxy Support
 
 ### Added

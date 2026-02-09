@@ -351,3 +351,81 @@ Test mixing different proxy types in one chain:
    ```
 
 3. Expected result: Connection goes through all three proxies in order
+
+### Test 10: SOCKS4 Proxy Support
+
+Test SOCKS4 proxy functionality:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   socks4 proxy.example.com 1080
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds through SOCKS4 proxy
+
+### Test 11: SOCKS4a Proxy with Hostname
+
+Test SOCKS4a proxy with hostname resolution:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   socks4a proxy.example.com 1080
+   ```
+
+2. Run a test application to a hostname target:
+   ```cmd
+   proxychains.exe curl https://example.com
+   ```
+
+3. Expected result: SOCKS4a resolves hostname remotely
+
+### Test 12: SOCKS4 with User ID
+
+Test SOCKS4 proxy with user ID authentication:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   socks4 proxy.example.com 1080 myuserid
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds with user ID sent to proxy
+
+### Test 13: Mixed SOCKS Versions
+
+Test mixing different SOCKS versions:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   socks4  proxy1.example.com 1080
+   socks5  proxy2.example.com 1080
+   socks4a proxy3.example.com 1080
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection goes through all SOCKS proxies in sequence
