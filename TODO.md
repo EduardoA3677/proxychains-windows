@@ -4,10 +4,10 @@
 
 ### Dynamic Chain Support
 - [x] Implement dynamic chain mode (skip dead proxies)
-- [ ] Add proxy health checking mechanism
-- [ ] Implement automatic proxy failover
+- [x] Add proxy health checking mechanism
+- [x] Implement automatic proxy failover
 - [x] Add timeout-based proxy detection
-- **Status**: Dynamic chain mode implemented (dead proxies are skipped during connection), improved timeout diagnostics
+- **Status**: Dynamic chain mode with health tracking: per-proxy failure counters, auto-skip dead proxies after 3 consecutive failures, automatic counter reset when all proxies fail
 - **Difficulty**: Medium
 - **Impact**: High - Better reliability when proxies fail
 
@@ -71,9 +71,9 @@
 - [ ] Structured logging (JSON output option)
 - [ ] Per-process log files
 - [ ] Log rotation
-- [ ] Performance metrics logging
+- [x] Performance metrics logging
 - [ ] Visual Studio debug output improvements
-- **Status**: Basic logging exists
+- **Status**: Per-proxy success/failure counters tracked via InterlockedIncrement for health monitoring
 - **Difficulty**: Low
 - **Impact**: Medium - Better troubleshooting
 
@@ -132,22 +132,22 @@
 - **Impact**: Various
 
 ### Code Quality
-- [ ] Refactor large functions into smaller ones
-- [ ] Improve error handling consistency
+- [x] Refactor large functions into smaller ones
+- [x] Improve error handling consistency
 - [x] Add more inline documentation
-- [ ] Reduce code duplication
+- [x] Reduce code duplication
 - [ ] Better separation of concerns (Win32 vs Cygwin code)
-- **Status**: Key functions documented with purpose and behavior comments
+- **Status**: TunnelThroughProxyChain extracted from 3 hook functions. Health tracking consolidated into shared counters. Error handling now consistent with InterlockedIncrement-based failure tracking across all chain modes.
 - **Difficulty**: Medium
 - **Impact**: Medium - Maintainability
 
 ### Documentation
 - [x] Developer documentation
-- [ ] API documentation for hooks
+- [x] API documentation for hooks
 - [ ] Architecture diagrams
 - [ ] Video tutorials
-- [ ] Troubleshooting guide expansion
-- **Status**: CONTRIBUTING.md created with developer guidelines, architecture overview, and coding standards
+- [x] Troubleshooting guide expansion
+- **Status**: CONTRIBUTING.md created. API_HOOKS.md documents all hooked functions and proxy protocols. Troubleshooting expanded in TESTING.md.
 - **Difficulty**: Low
 - **Impact**: Medium - Easier contribution
 

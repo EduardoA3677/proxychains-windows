@@ -12,6 +12,8 @@ All notable changes to proxychains-windows will be documented in this file.
 - **Chain Type Configuration**: Four chain modes now supported: `strict_chain` (default, all proxies must be online), `dynamic_chain` (skip dead proxies), `random_chain` (random proxy selection), and `round_robin_chain` (sequential rotation).
 - **SOCKS4/SOCKS4a Proxy Support**: New `socks4` proxy type supporting both SOCKS4 (IPv4 only) and SOCKS4a (hostname resolution on proxy server). Optional userid for ident-based authentication.
 - **HTTP CONNECT Proxy Support**: New `http` proxy type using HTTP CONNECT method for tunneling. Supports Basic authentication with username/password.
+- **Proxy Health Checking**: Per-proxy failure counters using thread-safe `InterlockedIncrement`. Dynamic chain auto-skips proxies with ≥3 consecutive failures. All chain modes now track success/failure metrics.
+- **Automatic Proxy Failover**: Dynamic chain mode automatically skips dead proxies and resets health counters when all proxies fail, allowing retry on next connection.
 - **Environment Variable Expansion**: File paths in configuration (such as `custom_hosts_file_path` and `-f` flag) now support `%VARIABLE%` environment variable expansion.
 - **Improved Timeout Diagnostics**: Proxy connection and handshake timeout error messages now include the timeout value and target address for better troubleshooting.
 - **Unified Binary Support**: x64 build now automatically detects and injects into both x64 and x86 (32-bit) processes
@@ -19,6 +21,7 @@ All notable changes to proxychains-windows will be documented in this file.
 - **Smart DLL Selection**: Automatically selects correct hook DLL (x86 or x64) based on target process
 - **Improved Error Messages**: Better diagnostics showing exact paths of missing DLLs
 - **Windows 11 Compatibility**: Full support and testing for Windows 11
+- **API Hook Documentation**: New API_HOOKS.md with complete documentation of all hooked functions, proxy protocols, chain modes, and health checking behavior.
 - **Enhanced Documentation**:
   - New "Key Features and Improvements" section in README
   - Updated Install section with unified binary instructions

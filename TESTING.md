@@ -306,6 +306,35 @@ A successful test should show:
 4. No errors or warnings in the logs (except for expected warnings)
 5. Child processes also being proxied automatically
 
+## Testing Proxy Health Checking
+
+### Test 16: Dynamic Chain with Health Tracking
+
+1. Configure `proxychains.conf`:
+   ```
+   dynamic_chain
+   ```
+2. Add 3 proxies: one alive, one dead (non-existent), one alive
+3. Make multiple connection attempts
+4. Check logs: dead proxy should show increasing failure count, then be auto-skipped
+5. Expected: `Dynamic chain: proxy 1 marked dead (3 consecutive failures), skipping`
+
+### Test 17: Health Counter Reset
+
+1. Configure `proxychains.conf` with `dynamic_chain`
+2. Use all dead proxies
+3. First attempt: all proxies tried and fail, counters reset
+4. Second attempt: all proxies retried (counters were reset)
+5. Expected: `Dynamic chain: all proxies failed! Resetting health counters.`
+
+### Test 18: Strict Chain with Failure Tracking
+
+1. Configure `proxychains.conf` with `strict_chain`
+2. First proxy is alive, second is dead
+3. Make connection attempt
+4. Check logs: failure count should increment for dead proxy
+5. Expected: `Strict chain: proxy 1 failed (failure count: 1)`
+
 ## Reporting Issues
 
 If you encounter issues, please report with:

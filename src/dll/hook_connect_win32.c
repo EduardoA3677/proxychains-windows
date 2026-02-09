@@ -43,6 +43,16 @@
 
 static PXCH_PROXY_DIRECT_DATA g_proxyDirect;
 
+// Proxy health tracking: per-proxy failure counters for health checking.
+// Tracks consecutive failures; resets on successful connection.
+// Used by dynamic chain mode to prioritize alive proxies.
+static volatile LONG g_proxyFailureCount[PXCH_MAX_PROXY_NUM] = { 0 };
+static volatile LONG g_proxySuccessCount[PXCH_MAX_PROXY_NUM] = { 0 };
+
+// Maximum consecutive failures before a proxy is considered dead.
+// In dynamic chain mode, proxies exceeding this limit are skipped.
+#define PXCH_PROXY_MAX_FAILURES 3
+
 static char pHostentPseudoTls[PXCH_TLS_END_W32HOSTENT];
 
 typedef struct _PXCH_WS2_32_TEMP_DATA {
@@ -1136,16 +1146,32 @@ static int TunnelThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PXCH_CHAIN*
 
 		FUNCIPCLOGD(L"Using dynamic chain mode");
 		for (dw = 0; dw < dwProxyNum; dw++) {
-			iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw]);
-			if (iReturn == SOCKET_ERROR) {
-				FUNCIPCLOGW(L"Dynamic chain: proxy %lu failed, skipping", (unsigned long)dw);
+			/* Health check: skip proxies with too many consecutive failures */
+			if (g_proxyFailureCount[dw] >= PXCH_PROXY_MAX_FAILURES) {
+				FUNCIPCLOGW(L"Dynamic chain: proxy %lu marked dead (%ld consecutive failures), skipping",
+					(unsigned long)dw, g_proxyFailureCount[dw]);
 				continue;
 			}
+
+			iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw]);
+			if (iReturn == SOCKET_ERROR) {
+				InterlockedIncrement(&g_proxyFailureCount[dw]);
+				FUNCIPCLOGW(L"Dynamic chain: proxy %lu failed (failure count: %ld), skipping",
+					(unsigned long)dw, g_proxyFailureCount[dw]);
+				continue;
+			}
+			/* Reset failure count on success */
+			InterlockedExchange(&g_proxyFailureCount[dw], 0);
+			InterlockedIncrement(&g_proxySuccessCount[dw]);
 			dwAliveCount++;
 		}
 
 		if (dwProxyNum > 0 && dwAliveCount == 0) {
-			FUNCIPCLOGE(L"Dynamic chain: all proxies failed!");
+			FUNCIPCLOGE(L"Dynamic chain: all proxies failed! Resetting health counters.");
+			/* Reset all failure counters so proxies can be retried next time */
+			for (dw = 0; dw < dwProxyNum; dw++) {
+				InterlockedExchange(&g_proxyFailureCount[dw], 0);
+			}
 			return SOCKET_ERROR;
 		}
 
@@ -1184,9 +1210,13 @@ static int TunnelThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PXCH_CHAIN*
 
 			iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dwSelected]);
 			if (iReturn == SOCKET_ERROR) {
-				FUNCIPCLOGW(L"Random chain: proxy %lu failed", (unsigned long)dwSelected);
+				InterlockedIncrement(&g_proxyFailureCount[dwSelected]);
+				FUNCIPCLOGW(L"Random chain: proxy %lu failed (failure count: %ld)",
+					(unsigned long)dwSelected, g_proxyFailureCount[dwSelected]);
 				return SOCKET_ERROR;
 			}
+			InterlockedExchange(&g_proxyFailureCount[dwSelected], 0);
+			InterlockedIncrement(&g_proxySuccessCount[dwSelected]);
 			dwCount++;
 		}
 
@@ -1210,9 +1240,13 @@ static int TunnelThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PXCH_CHAIN*
 			PXCH_UINT32 dwIndex = (dwStartIndex + dw) % dwProxyNum;
 			iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dwIndex]);
 			if (iReturn == SOCKET_ERROR) {
-				FUNCIPCLOGW(L"Round-robin chain: proxy %lu failed", (unsigned long)dwIndex);
+				InterlockedIncrement(&g_proxyFailureCount[dwIndex]);
+				FUNCIPCLOGW(L"Round-robin chain: proxy %lu failed (failure count: %ld)",
+					(unsigned long)dwIndex, g_proxyFailureCount[dwIndex]);
 				return SOCKET_ERROR;
 			}
+			InterlockedExchange(&g_proxyFailureCount[dwIndex], 0);
+			InterlockedIncrement(&g_proxySuccessCount[dwIndex]);
 			dwCount++;
 		}
 
@@ -1223,8 +1257,13 @@ static int TunnelThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PXCH_CHAIN*
 		FUNCIPCLOGD(L"Using strict chain mode");
 		for (dw = 0; dw < dwProxyNum; dw++) {
 			if ((iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) {
+				InterlockedIncrement(&g_proxyFailureCount[dw]);
+				FUNCIPCLOGW(L"Strict chain: proxy %lu failed (failure count: %ld)",
+					(unsigned long)dw, g_proxyFailureCount[dw]);
 				return SOCKET_ERROR;
 			}
+			InterlockedExchange(&g_proxyFailureCount[dw], 0);
+			InterlockedIncrement(&g_proxySuccessCount[dw]);
 		}
 		return 0;
 	}
