@@ -694,6 +694,10 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 			bIntoProxyList = TRUE;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks5")) {
 			dwProxyNum++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4")) {
+			dwProxyNum++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"http")) {
+			dwProxyNum++;
 		} else if (bIntoProxyList) {
 			LOGE(L"Config line %llu: Unknown proxy: %.*ls", ullLineNum, sOptionNameEnd - sOption, sOption);
 			goto err_invalid_config;
@@ -703,6 +707,8 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 			pTempPxchConfig->dwChainType = PXCH_CHAIN_TYPE_DYNAMIC;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"random_chain")) {
 			pTempPxchConfig->dwChainType = PXCH_CHAIN_TYPE_RANDOM;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"round_robin_chain")) {
+			pTempPxchConfig->dwChainType = PXCH_CHAIN_TYPE_ROUND_ROBIN;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"chain_len")) {
 			if (OptionGetNumberValueAfterOptionName(&lValue, sOptionNameEnd, NULL, 1, PXCH_MAX_PROXY_NUM) == -1) goto err_invalid_config_with_msg;
 			pTempPxchConfig->dwChainLen = (PXCH_UINT32)lValue;
@@ -973,6 +979,128 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 			StringCchCopyA(pSocks5->Ws2_32_ConnectFunctionName, _countof(pSocks5->Ws2_32_ConnectFunctionName), "Ws2_32_Socks5Connect");
 			StringCchCopyA(pSocks5->Ws2_32_HandshakeFunctionName, _countof(pSocks5->Ws2_32_HandshakeFunctionName), "Ws2_32_Socks5Handshake");
 			pSocks5->iAddrLen = sizeof(PXCH_HOST_PORT);
+			dwProxyCounter++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks4")) {
+			WCHAR* sHostStart;
+			WCHAR* sHostEnd;
+			WCHAR* sPortStart;
+			WCHAR* sPortEnd;
+			WCHAR* sUserStart;
+			WCHAR* sUserEnd;
+			long lPort;
+
+			PXCH_PROXY_SOCKS4_DATA* pSocks4 = &PXCH_CONFIG_PROXY_ARR(pPxchConfig)[dwProxyCounter].Socks4;
+
+			pSocks4->dwTag = PXCH_PROXY_TYPE_SOCKS4;
+
+			sHostStart = ConsumeStringInSet(sOptionNameEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sHostEnd = ConsumeStringUntilSet(sHostStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sHostStart == sHostEnd) {
+				pszParseErrorMessage = L"SOCKS4 server host missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetIpPortValue((PXCH_IP_PORT*)&pSocks4->HostPort, NULL, sHostStart, sHostEnd, FALSE, TRUE) == 0) {
+				if (pSocks4->HostPort.CommonHeader.wPort != 0) {
+					pszParseErrorMessage = L"SOCKS4 server host address should not have port (place port number after the address and separate them with whitespaces)";
+					goto err_invalid_config_with_msg;
+				}
+			} else {
+				pSocks4->HostPort.HostnamePort.wTag = PXCH_HOST_TYPE_HOSTNAME;
+				StringCchCopyNW(pSocks4->HostPort.HostnamePort.szValue, _countof(pSocks4->HostPort.HostnamePort.szValue), sHostStart, sHostEnd - sHostStart);
+			}
+
+			sPortStart = ConsumeStringInSet(sHostEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sPortEnd = ConsumeStringUntilSet(sPortStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sPortStart == sPortEnd) {
+				pszParseErrorMessage = L"SOCKS4 server port missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetNumberValue(&lPort, sPortStart, sPortEnd, 1, 65535, TRUE)) {
+				goto err_invalid_config_with_msg;
+			}
+
+			pSocks4->HostPort.CommonHeader.wPort = ntohs((PXCH_UINT16)lPort);
+
+			sUserStart = ConsumeStringInSet(sPortEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sUserEnd = ConsumeStringUntilSet(sUserStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (*sUserStart != L'\0' && sUserStart != sUserEnd) {
+				StringCchPrintfA(pSocks4->szUsername, _countof(pSocks4->szUsername), "%.*ls", sUserEnd - sUserStart, sUserStart);
+			}
+
+			StringCchCopyA(pSocks4->Ws2_32_ConnectFunctionName, _countof(pSocks4->Ws2_32_ConnectFunctionName), "Ws2_32_Socks4Connect");
+			StringCchCopyA(pSocks4->Ws2_32_HandshakeFunctionName, _countof(pSocks4->Ws2_32_HandshakeFunctionName), "Ws2_32_Socks4Handshake");
+			pSocks4->iAddrLen = sizeof(PXCH_HOST_PORT);
+			dwProxyCounter++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"http")) {
+			WCHAR* sHostStart;
+			WCHAR* sHostEnd;
+			WCHAR* sPortStart;
+			WCHAR* sPortEnd;
+			WCHAR* sUserPassStart;
+			WCHAR* sUserPassEnd;
+			long lPort;
+
+			PXCH_PROXY_HTTP_DATA* pHttp = &PXCH_CONFIG_PROXY_ARR(pPxchConfig)[dwProxyCounter].Http;
+
+			pHttp->dwTag = PXCH_PROXY_TYPE_HTTP;
+
+			sHostStart = ConsumeStringInSet(sOptionNameEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sHostEnd = ConsumeStringUntilSet(sHostStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sHostStart == sHostEnd) {
+				pszParseErrorMessage = L"HTTP proxy host missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetIpPortValue((PXCH_IP_PORT*)&pHttp->HostPort, NULL, sHostStart, sHostEnd, FALSE, TRUE) == 0) {
+				if (pHttp->HostPort.CommonHeader.wPort != 0) {
+					pszParseErrorMessage = L"HTTP proxy host address should not have port (place port number after the address and separate them with whitespaces)";
+					goto err_invalid_config_with_msg;
+				}
+			} else {
+				pHttp->HostPort.HostnamePort.wTag = PXCH_HOST_TYPE_HOSTNAME;
+				StringCchCopyNW(pHttp->HostPort.HostnamePort.szValue, _countof(pHttp->HostPort.HostnamePort.szValue), sHostStart, sHostEnd - sHostStart);
+			}
+
+			sPortStart = ConsumeStringInSet(sHostEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sPortEnd = ConsumeStringUntilSet(sPortStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sPortStart == sPortEnd) {
+				pszParseErrorMessage = L"HTTP proxy port missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetNumberValue(&lPort, sPortStart, sPortEnd, 1, 65535, TRUE)) {
+				goto err_invalid_config_with_msg;
+			}
+
+			pHttp->HostPort.CommonHeader.wPort = ntohs((PXCH_UINT16)lPort);
+
+			sUserPassStart = ConsumeStringInSet(sPortEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sUserPassEnd = ConsumeStringUntilSet(sUserPassStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (*sUserPassStart == L'\0' || sUserPassStart == sUserPassEnd) goto http_end;
+
+			StringCchPrintfA(pHttp->szUsername, _countof(pHttp->szUsername), "%.*ls", sUserPassEnd - sUserPassStart, sUserPassStart);
+
+			sUserPassStart = ConsumeStringInSet(sUserPassEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sUserPassEnd = ConsumeStringUntilSet(sUserPassStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+			if (*sUserPassStart == L'\0' || sUserPassStart == sUserPassEnd) {
+				pszParseErrorMessage = L"HTTP proxy password missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			StringCchPrintfA(pHttp->szPassword, _countof(pHttp->szPassword), "%.*ls", sUserPassEnd - sUserPassStart, sUserPassStart);
+
+		http_end:
+			StringCchCopyA(pHttp->Ws2_32_ConnectFunctionName, _countof(pHttp->Ws2_32_ConnectFunctionName), "Ws2_32_HttpConnect");
+			StringCchCopyA(pHttp->Ws2_32_HandshakeFunctionName, _countof(pHttp->Ws2_32_HandshakeFunctionName), "Ws2_32_HttpHandshake");
+			pHttp->iAddrLen = sizeof(PXCH_HOST_PORT);
 			dwProxyCounter++;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"localnet")) {
 			PXCH_RULE* pRule = &PXCH_CONFIG_RULE_ARR(pPxchConfig)[dwRuleCounter];

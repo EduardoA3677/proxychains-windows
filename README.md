@@ -234,7 +234,7 @@ proxychains.exe is in no way compatible with terminals based on ConEmu
 **In the following period, I will try to re-structure proxychains.exe
 (files, functions, ...) and complete some to-dos at the same time.**
 
-- [ ] Domain name resolution should be case-insensitive
+- [x] Domain name resolution should be case-insensitive
 - [ ] Proxify osu!lazer launcher? (#11)
 - [ ] Configuration file path (#9)
 - [ ] Recognize IPv4-mapped fake IPv6 address
