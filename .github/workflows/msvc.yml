@@ -8,7 +8,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v5
     
     - name: Update submodules 
       run: |
@@ -43,7 +43,7 @@ jobs:
       shell: cmd
       
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v5
       with:
         name: proxychains-windows-unified
         path: release-package/
