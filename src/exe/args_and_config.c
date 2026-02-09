@@ -909,7 +909,16 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 				goto err_invalid_config_with_msg;
 			}
 			
-			StringCchCopyNW(pTempPxchConfig->szRoundRobinStateFile, _countof(pTempPxchConfig->szRoundRobinStateFile), sPathStart, sPathEnd - sPathStart);
+			// Apply environment variable expansion to round-robin state file path
+			WCHAR szTempPath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+			WCHAR szExpandedPath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+			StringCchCopyNW(szTempPath, _countof(szTempPath), sPathStart, sPathEnd - sPathStart);
+			
+			if (ExpandEnvironmentVariablesInString(szExpandedPath, _countof(szExpandedPath), szTempPath) == NO_ERROR) {
+				StringCchCopyW(pTempPxchConfig->szRoundRobinStateFile, _countof(pTempPxchConfig->szRoundRobinStateFile), szExpandedPath);
+			} else {
+				StringCchCopyNW(pTempPxchConfig->szRoundRobinStateFile, _countof(pTempPxchConfig->szRoundRobinStateFile), sPathStart, sPathEnd - sPathStart);
+			}
 			pTempPxchConfig->dwEnablePersistentRoundRobin = TRUE;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"persistent_round_robin")) {
 			pTempPxchConfig->dwEnablePersistentRoundRobin = TRUE;
@@ -937,7 +946,16 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 				goto err_invalid_config_with_msg;
 			}
 			
-			StringCchCopyNW(pTempPxchConfig->szLogFilePath, _countof(pTempPxchConfig->szLogFilePath), sPathStart, sPathEnd - sPathStart);
+			// Apply environment variable expansion to log file path
+			WCHAR szTempPath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+			WCHAR szExpandedPath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+			StringCchCopyNW(szTempPath, _countof(szTempPath), sPathStart, sPathEnd - sPathStart);
+			
+			if (ExpandEnvironmentVariablesInString(szExpandedPath, _countof(szExpandedPath), szTempPath) == NO_ERROR) {
+				StringCchCopyW(pTempPxchConfig->szLogFilePath, _countof(pTempPxchConfig->szLogFilePath), szExpandedPath);
+			} else {
+				StringCchCopyNW(pTempPxchConfig->szLogFilePath, _countof(pTempPxchConfig->szLogFilePath), sPathStart, sPathEnd - sPathStart);
+			}
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"proxy_dns")) {
 			pTempPxchConfig->dwWillUseFakeIpAsRemoteDns = TRUE;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"proxy_dns_udp_associate")) {
@@ -1025,8 +1043,21 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"custom_hosts_file_path")) {
 			const WCHAR* pPathStart;
 			const WCHAR* pPathEnd;
+			WCHAR szTempPath[PXCH_MAX_HOSTS_FILE_PATH_BUFSIZE];
+			WCHAR szExpandedPath[PXCH_MAX_HOSTS_FILE_PATH_BUFSIZE];
+			
 			if (OptionGetStringValueAfterOptionName(&pPathStart, &pPathEnd, sOptionNameEnd, NULL) == -1) goto err_invalid_config_with_msg;
-			if (FAILED(StringCchCopyNW(pPxchConfig->szHostsFilePath, _countof(pPxchConfig->szHostsFilePath), pPathStart, pPathEnd - pPathStart))) goto err_insuf_buf;
+			
+			// Copy to temporary buffer
+			if (FAILED(StringCchCopyNW(szTempPath, _countof(szTempPath), pPathStart, pPathEnd - pPathStart))) goto err_insuf_buf;
+			
+			// Apply environment variable expansion
+			if (ExpandEnvironmentVariablesInString(szExpandedPath, _countof(szExpandedPath), szTempPath) == NO_ERROR) {
+				if (FAILED(StringCchCopyW(pPxchConfig->szHostsFilePath, _countof(pPxchConfig->szHostsFilePath), szExpandedPath))) goto err_insuf_buf;
+			} else {
+				// Fall back to original if expansion fails
+				if (FAILED(StringCchCopyNW(pPxchConfig->szHostsFilePath, _countof(pPxchConfig->szHostsFilePath), pPathStart, pPathEnd - pPathStart))) goto err_insuf_buf;
+			}
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"default_target")) {
 			const WCHAR* pTargetStart;
 			const WCHAR* pTargetEnd;

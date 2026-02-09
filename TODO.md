@@ -41,10 +41,10 @@
 ### Configuration Improvements
 - [x] Support for HTTP/HTTPS proxy (SOCKS5 also supported)
 - [x] Support for SOCKS4/SOCKS4a proxies
+- [x] Environment variable expansion in config
 - [ ] Multiple configuration file profiles
-- [ ] Environment variable expansion in config
 - [ ] Reload configuration without restart
-- **Status**: HTTP/HTTPS and SOCKS4/SOCKS4a implemented
+- **Status**: HTTP/HTTPS, SOCKS4/SOCKS4a, and environment variable expansion implemented
 - **Difficulty**: Medium
 - **Impact**: Medium - More flexibility
 

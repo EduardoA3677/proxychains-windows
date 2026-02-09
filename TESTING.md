@@ -496,3 +496,38 @@ Test that each process gets its own log file:
    - Files named like: `proxychains_test.curl.exe.1234.log`
    - Each file contains only logs for that specific process
    - Files include process ID in filename for uniqueness
+
+### Test 16: Environment Variable Expansion in Configuration
+
+Test that environment variables are expanded in configuration:
+
+1. Set an environment variable:
+   ```cmd
+   set PROXY_HOST=localhost
+   set PROXY_CONFIG_DIR=%USERPROFILE%\.proxychains
+   ```
+
+2. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   log_file_path %TEMP%\proxychains_test
+   round_robin_state_file %PROXY_CONFIG_DIR%\state.txt
+   custom_hosts_file_path %PROXY_CONFIG_DIR%\hosts
+   
+   [ProxyList]
+   socks5 %PROXY_HOST% 1080
+   ```
+
+3. Note: Currently environment expansion works for file paths but not proxy hostnames
+   (proxy hostnames expansion would need additional implementation)
+
+4. Run with expanded paths:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+5. Expected result:
+   - Log file created in %TEMP% directory
+   - State file created in %USERPROFILE%\.proxychains\
+   - Paths properly expanded using current environment variables
+   - Works with both %VAR% (Windows) and ${VAR} (Unix) syntax

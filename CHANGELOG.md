@@ -2,6 +2,34 @@
 
 All notable changes to proxychains-windows will be documented in this file.
 
+## [Unreleased] - Environment Variable Expansion in Configuration
+
+### Added
+- **Environment Variable Expansion**: Configuration values now support environment variables
+  - Supports both %VAR% (Windows) and ${VAR} (Unix) syntax
+  - Works for file paths: `custom_hosts_file_path`, `log_file_path`, `round_robin_state_file`
+  - Automatic expansion on config load
+  - Falls back to literal path if variable not found
+  - Platform-agnostic variable syntax
+
+### Examples
+```conf
+# Windows style
+custom_hosts_file_path %USERPROFILE%\.proxychains\hosts
+log_file_path %TEMP%\proxychains
+round_robin_state_file %APPDATA%\proxychains\state.txt
+
+# Unix style (also works on Windows)
+custom_hosts_file_path ${HOME}/.proxychains/hosts
+log_file_path ${TEMP}/proxychains
+```
+
+### Implementation Details
+- `ExpandEnvironmentVariablesInString()` utility applied to config parsing
+- Handles both Windows (%VAR%) and Unix (${VAR}) syntax
+- Graceful fallback if variable undefined
+- No changes to existing behavior if no variables used
+
 ## [Unreleased] - Per-Process Log Files
 
 ### Added
