@@ -280,33 +280,33 @@ int main(int argc, const char* const* argv)
 	
 	if (strcmp(argv[1], "--get-winapi-func-addr") == 0) {
 #if defined(_M_X64) || defined(__x86_64__)
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
-		wprintf(L"%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
+		printf("%llX\n", 0ULL);
 #else
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&GetModuleHandleW);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&LoadLibraryW);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&GetProcAddress);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&FreeLibrary);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&GetLastError);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&OutputDebugStringA);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&GetCurrentProcessId);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&wsprintfA);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&Sleep);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&ExitThread);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&ReleaseSemaphore);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&CloseHandle);
-		wprintf(L"%llX\n", (unsigned long long)(uintptr_t)&WaitForSingleObject);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&GetModuleHandleW);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&LoadLibraryW);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&GetProcAddress);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&FreeLibrary);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&GetLastError);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&OutputDebugStringA);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&GetCurrentProcessId);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&wsprintfA);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&Sleep);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&ExitThread);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&ReleaseSemaphore);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&CloseHandle);
+		printf("%llX\n", (unsigned long long)(uintptr_t)&WaitForSingleObject);
 #endif
 		return 0;
 	}
