@@ -456,6 +456,15 @@ typedef struct _PROXYCHAINS_CONFIG {
 	PXCH_UINT32 dwRandomSeed;
 	PXCH_UINT32 dwRandomSeedSet;
 
+	// DNS cache TTL in seconds (0 = no cache)
+	PXCH_UINT32 dwDnsCacheTtlSeconds;
+
+	// Custom DNS server for proxy_dns_daemon mode (IPv4 sockaddr)
+	// When set, DNS queries are forwarded to this server instead of system default
+	PXCH_IP_ADDRESS CustomDnsServer;
+	PXCH_UINT32 dwCustomDnsServerPort;
+	PXCH_UINT32 dwHasCustomDnsServer;
+
 	// Process name filtering: whitelist (process_only) or blacklist (process_except)
 	// When dwProcessFilterMode == 1 (whitelist): only inject into matching process names
 	// When dwProcessFilterMode == 2 (blacklist): inject into all except matching process names

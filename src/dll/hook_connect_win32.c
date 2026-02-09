@@ -79,6 +79,596 @@ typedef union _PXCH_TEMP_DATA {
 	PXCH_WS2_32_TEMP_DATA Ws2_32_TempData;
 } PXCH_TEMP_DATA;
 
+
+// ============================================================================
+// DNS Cache: in-memory cache with TTL for resolved hostnames
+// ============================================================================
+
+#define PXCH_DNS_CACHE_MAX_ENTRIES 256
+
+typedef struct _PXCH_DNS_CACHE_ENTRY {
+	PXCH_HOSTNAME Hostname;
+	PXCH_IP_ADDRESS Ipv4;
+	PXCH_IP_ADDRESS Ipv6;
+	BOOL bHasIpv4;
+	BOOL bHasIpv6;
+	DWORD dwExpireTickCount;    // GetTickCount() value when entry expires
+} PXCH_DNS_CACHE_ENTRY;
+
+static PXCH_DNS_CACHE_ENTRY g_DnsCache[PXCH_DNS_CACHE_MAX_ENTRIES];
+static volatile LONG g_dwDnsCacheCount = 0;
+static CRITICAL_SECTION g_csDnsCache;
+static BOOL g_bDnsCacheInitialized = FALSE;
+
+static void DnsCacheInit(void)
+{
+	if (!g_bDnsCacheInitialized) {
+		InitializeCriticalSection(&g_csDnsCache);
+		ZeroMemory(g_DnsCache, sizeof(g_DnsCache));
+		g_dwDnsCacheCount = 0;
+		g_bDnsCacheInitialized = TRUE;
+	}
+}
+
+// Look up a hostname in the DNS cache. Returns TRUE if found and not expired.
+static BOOL DnsCacheLookup(const PXCH_HOSTNAME* pHostname, PXCH_IP_ADDRESS* pIpv4, PXCH_IP_ADDRESS* pIpv6, BOOL* pbHasIpv4, BOOL* pbHasIpv6)
+{
+	LONG i;
+	DWORD dwNow;
+
+	if (!g_bDnsCacheInitialized || !g_pPxchConfig || g_pPxchConfig->dwDnsCacheTtlSeconds == 0) return FALSE;
+
+	dwNow = GetTickCount();
+	EnterCriticalSection(&g_csDnsCache);
+
+	for (i = 0; i < g_dwDnsCacheCount && i < PXCH_DNS_CACHE_MAX_ENTRIES; i++) {
+		if (StrCmpIW(g_DnsCache[i].Hostname.szValue, pHostname->szValue) == 0) {
+			// Check expiration
+			if ((int)(dwNow - g_DnsCache[i].dwExpireTickCount) >= 0) {
+				// Expired: remove by swapping with last
+				if (i < g_dwDnsCacheCount - 1) {
+					g_DnsCache[i] = g_DnsCache[g_dwDnsCacheCount - 1];
+				}
+				InterlockedDecrement(&g_dwDnsCacheCount);
+				LeaveCriticalSection(&g_csDnsCache);
+				return FALSE;
+			}
+			// Cache hit
+			if (pIpv4 && g_DnsCache[i].bHasIpv4) *pIpv4 = g_DnsCache[i].Ipv4;
+			if (pIpv6 && g_DnsCache[i].bHasIpv6) *pIpv6 = g_DnsCache[i].Ipv6;
+			if (pbHasIpv4) *pbHasIpv4 = g_DnsCache[i].bHasIpv4;
+			if (pbHasIpv6) *pbHasIpv6 = g_DnsCache[i].bHasIpv6;
+			LeaveCriticalSection(&g_csDnsCache);
+			FUNCIPCLOGV(L"DNS cache hit: %ls", pHostname->szValue);
+			return TRUE;
+		}
+	}
+
+	LeaveCriticalSection(&g_csDnsCache);
+	return FALSE;
+}
+
+// Add or update an entry in the DNS cache.
+static void DnsCacheAdd(const PXCH_HOSTNAME* pHostname, const PXCH_IP_ADDRESS* pIpv4, const PXCH_IP_ADDRESS* pIpv6, BOOL bHasIpv4, BOOL bHasIpv6)
+{
+	LONG i;
+	LONG dwSlot;
+
+	if (!g_bDnsCacheInitialized || !g_pPxchConfig || g_pPxchConfig->dwDnsCacheTtlSeconds == 0) return;
+
+	EnterCriticalSection(&g_csDnsCache);
+
+	// Check if already exists - update it
+	for (i = 0; i < g_dwDnsCacheCount && i < PXCH_DNS_CACHE_MAX_ENTRIES; i++) {
+		if (StrCmpIW(g_DnsCache[i].Hostname.szValue, pHostname->szValue) == 0) {
+			if (bHasIpv4 && pIpv4) { g_DnsCache[i].Ipv4 = *pIpv4; g_DnsCache[i].bHasIpv4 = TRUE; }
+			if (bHasIpv6 && pIpv6) { g_DnsCache[i].Ipv6 = *pIpv6; g_DnsCache[i].bHasIpv6 = TRUE; }
+			g_DnsCache[i].dwExpireTickCount = GetTickCount() + (g_pPxchConfig->dwDnsCacheTtlSeconds * 1000);
+			LeaveCriticalSection(&g_csDnsCache);
+			return;
+		}
+	}
+
+	// Add new entry
+	dwSlot = g_dwDnsCacheCount;
+	if (dwSlot >= PXCH_DNS_CACHE_MAX_ENTRIES) {
+		// Evict oldest (slot 0)
+		MoveMemory(&g_DnsCache[0], &g_DnsCache[1], sizeof(PXCH_DNS_CACHE_ENTRY) * (PXCH_DNS_CACHE_MAX_ENTRIES - 1));
+		dwSlot = PXCH_DNS_CACHE_MAX_ENTRIES - 1;
+	} else {
+		InterlockedIncrement(&g_dwDnsCacheCount);
+	}
+
+	g_DnsCache[dwSlot].Hostname = *pHostname;
+	g_DnsCache[dwSlot].bHasIpv4 = bHasIpv4;
+	g_DnsCache[dwSlot].bHasIpv6 = bHasIpv6;
+	if (bHasIpv4 && pIpv4) g_DnsCache[dwSlot].Ipv4 = *pIpv4;
+	if (bHasIpv6 && pIpv6) g_DnsCache[dwSlot].Ipv6 = *pIpv6;
+	g_DnsCache[dwSlot].dwExpireTickCount = GetTickCount() + (g_pPxchConfig->dwDnsCacheTtlSeconds * 1000);
+
+	FUNCIPCLOGV(L"DNS cache add: %ls (TTL=%lu s)", pHostname->szValue, (unsigned long)g_pPxchConfig->dwDnsCacheTtlSeconds);
+
+	LeaveCriticalSection(&g_csDnsCache);
+}
+
+
+// ============================================================================
+// SOCKS5 UDP Associate: Forward DNS queries through proxy via SOCKS5 UDP
+// ============================================================================
+
+// Perform SOCKS5 UDP ASSOCIATE and send a DNS query through the UDP relay,
+// then receive the DNS response. This prevents DNS leaks by routing DNS
+// through the SOCKS5 proxy.
+//
+// Returns 0 on success, fills pRecvBuf/piRecvLen with the DNS response.
+// Returns SOCKET_ERROR on failure.
+static int Socks5UdpAssociateDnsQuery(
+	const PXCH_PROXY_DATA* pProxy,
+	const char* pDnsQueryBuf, int iDnsQueryLen,
+	const struct sockaddr_in* pDnsServerAddr,
+	char* pRecvBuf, int* piRecvLen, int iRecvBufSize)
+{
+	SOCKET sTcp = INVALID_SOCKET;
+	SOCKET sUdp = INVALID_SOCKET;
+	int iReturn;
+	int iWSALastError;
+	DWORD dwLastError;
+	char SendBuf[PXCH_MAX_HOSTNAME_BUFSIZE + 10];
+	char RecvBuf[PXCH_MAX_HOSTNAME_BUFSIZE + 10];
+	struct sockaddr_in ProxyAddr;
+	struct sockaddr_in UdpRelayAddr;
+	struct sockaddr_in LocalAddr;
+	int iLocalAddrLen;
+	WSADATA WsaData;
+	char ServerBoundAddrType;
+	TIMEVAL Timeout = { 5, 0 };  // 5 second timeout for DNS
+	fd_set rfds;
+
+	// We need Winsock initialized
+	WSAStartup(MAKEWORD(2, 2), &WsaData);
+
+	// Step 1: Connect TCP to proxy for control channel
+	sTcp = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (sTcp == INVALID_SOCKET) goto err_general;
+
+	// Build proxy address
+	ZeroMemory(&ProxyAddr, sizeof(ProxyAddr));
+	ProxyAddr.sin_family = AF_INET;
+	if (HostIsType(IPV4, pProxy->CommonHeader.HostPort)) {
+		const struct sockaddr_in* pSin = (const struct sockaddr_in*)&pProxy->CommonHeader.HostPort.IpPort.Sockaddr;
+		ProxyAddr.sin_addr = pSin->sin_addr;
+		ProxyAddr.sin_port = pSin->sin_port;
+	} else {
+		goto err_not_supported;
+	}
+
+	iReturn = orig_fpWs2_32_connect(sTcp, (struct sockaddr*)&ProxyAddr, sizeof(ProxyAddr));
+	if (iReturn == SOCKET_ERROR) goto err_general;
+
+	// Step 2: SOCKS5 handshake on TCP
+	{
+		BOOL bUsePassword = pProxy->Socks5.szUsername[0] && pProxy->Socks5.szPassword[0];
+
+		if (send(sTcp, bUsePassword ? "\05\01\02" : "\05\01\00", 3, 0) == SOCKET_ERROR) goto err_general;
+		if (recv(sTcp, RecvBuf, 2, 0) != 2) goto err_general;
+		if ((!bUsePassword && RecvBuf[1] != '\00') || (bUsePassword && RecvBuf[1] != '\02')) goto err_auth;
+
+		if (bUsePassword) {
+			size_t cbUsernameLength, cbPasswordLength;
+			char UserPassBuf[PXCH_MAX_USERNAME_BUFSIZE + PXCH_MAX_PASSWORD_BUFSIZE + 16];
+			char* p = UserPassBuf;
+
+			StringCchLengthA(pProxy->Socks5.szUsername, _countof(pProxy->Socks5.szUsername), &cbUsernameLength);
+			StringCchLengthA(pProxy->Socks5.szPassword, _countof(pProxy->Socks5.szPassword), &cbPasswordLength);
+
+			*p++ = '\01';
+			*p++ = (char)(unsigned char)cbUsernameLength;
+			CopyMemory(p, pProxy->Socks5.szUsername, cbUsernameLength); p += cbUsernameLength;
+			*p++ = (char)(unsigned char)cbPasswordLength;
+			CopyMemory(p, pProxy->Socks5.szPassword, cbPasswordLength); p += cbPasswordLength;
+
+			if (send(sTcp, UserPassBuf, (int)(p - UserPassBuf), 0) == SOCKET_ERROR) goto err_general;
+			if (recv(sTcp, RecvBuf, 2, 0) != 2) goto err_general;
+			if (RecvBuf[1] != '\00') goto err_auth;
+		}
+	}
+
+	// Step 3: Send UDP ASSOCIATE request (command 0x03)
+	// We request UDP associate with our local address 0.0.0.0:0
+	CopyMemory(SendBuf, "\05\03\00\x01\x00\x00\x00\x00\x00\x00", 10);
+	if (send(sTcp, SendBuf, 10, 0) == SOCKET_ERROR) goto err_general;
+
+	// Step 4: Receive UDP ASSOCIATE reply - get relay address
+	if (recv(sTcp, RecvBuf, 4, 0) != 4) goto err_general;
+	if (RecvBuf[1] != '\00') {
+		FUNCIPCLOGW(L"SOCKS5 UDP ASSOCIATE failed: server reply code %d", (int)(unsigned char)RecvBuf[1]);
+		goto err_data_invalid;
+	}
+
+	ServerBoundAddrType = RecvBuf[3];
+	ZeroMemory(&UdpRelayAddr, sizeof(UdpRelayAddr));
+	UdpRelayAddr.sin_family = AF_INET;
+
+	if (ServerBoundAddrType == '\01') {
+		// IPv4 relay address
+		if (recv(sTcp, RecvBuf, 6, 0) != 6) goto err_general;
+		CopyMemory(&UdpRelayAddr.sin_addr, RecvBuf, 4);
+		CopyMemory(&UdpRelayAddr.sin_port, RecvBuf + 4, 2);
+
+		// If relay address is 0.0.0.0, use the proxy's address
+		if (UdpRelayAddr.sin_addr.s_addr == 0) {
+			UdpRelayAddr.sin_addr = ProxyAddr.sin_addr;
+		}
+	} else if (ServerBoundAddrType == '\03') {
+		// Hostname - not common for UDP relay, skip
+		if (recv(sTcp, RecvBuf, 1, 0) != 1) goto err_general;
+		{
+			int iLen = (unsigned char)RecvBuf[0];
+			if (recv(sTcp, RecvBuf, iLen + 2, 0) != iLen + 2) goto err_general;
+		}
+		// Fall back to proxy address
+		UdpRelayAddr.sin_addr = ProxyAddr.sin_addr;
+		CopyMemory(&UdpRelayAddr.sin_port, RecvBuf + (unsigned char)RecvBuf[0], 2);
+	} else if (ServerBoundAddrType == '\04') {
+		// IPv6 - we only support IPv4 relay for now
+		if (recv(sTcp, RecvBuf, 18, 0) != 18) goto err_general;
+		goto err_not_supported;
+	} else {
+		goto err_data_invalid;
+	}
+
+	FUNCIPCLOGD(L"SOCKS5 UDP ASSOCIATE: relay at %u.%u.%u.%u:%u",
+		((unsigned char*)&UdpRelayAddr.sin_addr)[0],
+		((unsigned char*)&UdpRelayAddr.sin_addr)[1],
+		((unsigned char*)&UdpRelayAddr.sin_addr)[2],
+		((unsigned char*)&UdpRelayAddr.sin_addr)[3],
+		(unsigned int)ntohs(UdpRelayAddr.sin_port));
+
+	// Step 5: Create UDP socket and send DNS query through relay
+	sUdp = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (sUdp == INVALID_SOCKET) goto err_general;
+
+	// Bind UDP socket to any port
+	ZeroMemory(&LocalAddr, sizeof(LocalAddr));
+	LocalAddr.sin_family = AF_INET;
+	LocalAddr.sin_addr.s_addr = INADDR_ANY;
+	LocalAddr.sin_port = 0;
+	if (bind(sUdp, (struct sockaddr*)&LocalAddr, sizeof(LocalAddr)) == SOCKET_ERROR) goto err_general;
+
+	// Build SOCKS5 UDP request header:
+	// +----+------+------+----------+----------+----------+
+	// |RSV | FRAG | ATYP | DST.ADDR | DST.PORT |   DATA   |
+	// +----+------+------+----------+----------+----------+
+	// | 2  |  1   |  1   | Variable |    2     | Variable |
+	// +----+------+------+----------+----------+----------+
+	{
+		char UdpBuf[4 + 4 + 2 + 1024]; // header + IPv4 addr + port + DNS query
+		int iUdpLen = 0;
+
+		// RSV (2 bytes) + FRAG (1 byte) = 0x00 0x00 0x00
+		UdpBuf[0] = 0x00; UdpBuf[1] = 0x00; UdpBuf[2] = 0x00;
+		// ATYP = 0x01 (IPv4)
+		UdpBuf[3] = 0x01;
+		// DST.ADDR = DNS server IPv4
+		CopyMemory(UdpBuf + 4, &pDnsServerAddr->sin_addr, 4);
+		// DST.PORT = DNS server port (usually 53)
+		CopyMemory(UdpBuf + 8, &pDnsServerAddr->sin_port, 2);
+		iUdpLen = 10;
+
+		// Append DNS query
+		if (iDnsQueryLen > (int)sizeof(UdpBuf) - iUdpLen) goto err_not_supported;
+		CopyMemory(UdpBuf + iUdpLen, pDnsQueryBuf, iDnsQueryLen);
+		iUdpLen += iDnsQueryLen;
+
+		// Send to relay
+		iReturn = sendto(sUdp, UdpBuf, iUdpLen, 0, (struct sockaddr*)&UdpRelayAddr, sizeof(UdpRelayAddr));
+		if (iReturn == SOCKET_ERROR) goto err_general;
+	}
+
+	// Step 6: Receive DNS response from relay
+	{
+		char UdpRecvBuf[4 + 4 + 2 + 1024];
+		int iUdpRecvLen;
+		struct sockaddr_in FromAddr;
+		int iFromLen = sizeof(FromAddr);
+
+		FD_ZERO(&rfds);
+		FD_SET(sUdp, &rfds);
+		iReturn = select(-1, &rfds, NULL, NULL, &Timeout);
+		if (iReturn <= 0) {
+			FUNCIPCLOGW(L"SOCKS5 UDP ASSOCIATE: DNS response timeout");
+			goto err_timeout;
+		}
+
+		iUdpRecvLen = recvfrom(sUdp, UdpRecvBuf, sizeof(UdpRecvBuf), 0, (struct sockaddr*)&FromAddr, &iFromLen);
+		if (iUdpRecvLen == SOCKET_ERROR || iUdpRecvLen < 10) goto err_general;
+
+		// Skip SOCKS5 UDP header (RSV 2 + FRAG 1 + ATYP 1 + ADDR 4 + PORT 2 = 10 for IPv4)
+		{
+			int iHeaderLen = 10; // Default for IPv4
+			if (UdpRecvBuf[3] == 0x03) {
+				// Hostname type
+				iHeaderLen = 4 + 1 + (unsigned char)UdpRecvBuf[4] + 2;
+			} else if (UdpRecvBuf[3] == 0x04) {
+				// IPv6
+				iHeaderLen = 4 + 16 + 2;
+			}
+
+			if (iUdpRecvLen <= iHeaderLen) goto err_data_invalid;
+
+			*piRecvLen = iUdpRecvLen - iHeaderLen;
+			if (*piRecvLen > iRecvBufSize) *piRecvLen = iRecvBufSize;
+			CopyMemory(pRecvBuf, UdpRecvBuf + iHeaderLen, *piRecvLen);
+		}
+	}
+
+	// Success
+	closesocket(sUdp);
+	closesocket(sTcp);
+	return 0;
+
+err_not_supported:
+	FUNCIPCLOGW(L"SOCKS5 UDP ASSOCIATE: address type not supported");
+	iWSALastError = WSAEAFNOSUPPORT;
+	dwLastError = ERROR_NOT_SUPPORTED;
+	goto err_return;
+
+err_auth:
+	FUNCIPCLOGW(L"SOCKS5 UDP ASSOCIATE: authentication failed");
+	iWSALastError = WSAEACCES;
+	dwLastError = ERROR_ACCESS_DENIED;
+	goto err_return;
+
+err_data_invalid:
+	FUNCIPCLOGW(L"SOCKS5 UDP ASSOCIATE: invalid data from server");
+	iWSALastError = WSAECONNRESET;
+	dwLastError = ERROR_INVALID_DATA;
+	goto err_return;
+
+err_timeout:
+	iWSALastError = WSAETIMEDOUT;
+	dwLastError = ERROR_TIMEOUT;
+	goto err_return;
+
+err_general:
+	iWSALastError = WSAGetLastError();
+	dwLastError = GetLastError();
+
+err_return:
+	if (sUdp != INVALID_SOCKET) closesocket(sUdp);
+	if (sTcp != INVALID_SOCKET) closesocket(sTcp);
+	WSASetLastError(iWSALastError);
+	SetLastError(dwLastError);
+	return SOCKET_ERROR;
+}
+
+
+// Build a DNS A record query for the given hostname.
+// Returns the query length in bytes, or 0 on error.
+static int BuildDnsQuery(char* pBuf, int iBufSize, const char* szHostname, BOOL bAAAA)
+{
+	int iLen = 0;
+	const char* pLabel;
+	const char* pDot;
+	size_t cbLabelLen;
+
+	if (iBufSize < 12 + 2 + 2 + 2) return 0;
+
+	// DNS Header: ID=0x1234, QR=0, OPCODE=0, RD=1, QDCOUNT=1
+	pBuf[0] = 0x12; pBuf[1] = 0x34;  // Transaction ID
+	pBuf[2] = 0x01; pBuf[3] = 0x00;  // Flags: RD=1
+	pBuf[4] = 0x00; pBuf[5] = 0x01;  // Questions: 1
+	pBuf[6] = 0x00; pBuf[7] = 0x00;  // Answers: 0
+	pBuf[8] = 0x00; pBuf[9] = 0x00;  // Authority: 0
+	pBuf[10] = 0x00; pBuf[11] = 0x00; // Additional: 0
+	iLen = 12;
+
+	// QNAME: hostname as labels
+	pLabel = szHostname;
+	while (*pLabel) {
+		pDot = pLabel;
+		while (*pDot && *pDot != '.') pDot++;
+		cbLabelLen = pDot - pLabel;
+		if (cbLabelLen == 0 || cbLabelLen > 63) return 0;
+		if (iLen + 1 + (int)cbLabelLen + 5 > iBufSize) return 0;
+
+		pBuf[iLen++] = (char)(unsigned char)cbLabelLen;
+		CopyMemory(pBuf + iLen, pLabel, cbLabelLen);
+		iLen += (int)cbLabelLen;
+
+		pLabel = *pDot ? pDot + 1 : pDot;
+	}
+	pBuf[iLen++] = 0x00; // Root label
+
+	// QTYPE: A (0x0001) or AAAA (0x001C)
+	pBuf[iLen++] = 0x00;
+	pBuf[iLen++] = bAAAA ? 0x1C : 0x01;
+
+	// QCLASS: IN (0x0001)
+	pBuf[iLen++] = 0x00;
+	pBuf[iLen++] = 0x01;
+
+	return iLen;
+}
+
+
+// Parse a DNS response and extract the first A/AAAA record IP address.
+// Returns TRUE if an IP was extracted, FALSE otherwise.
+static BOOL ParseDnsResponse(const char* pBuf, int iLen, PXCH_IP_ADDRESS* pIpv4, PXCH_IP_ADDRESS* pIpv6, BOOL* pbHasIpv4, BOOL* pbHasIpv6)
+{
+	int iOffset;
+	int iQdCount, iAnCount;
+	int i;
+
+	*pbHasIpv4 = FALSE;
+	*pbHasIpv6 = FALSE;
+
+	if (iLen < 12) return FALSE;
+
+	// Check response flag
+	if (!(pBuf[2] & 0x80)) return FALSE;  // QR must be 1 (response)
+
+	iQdCount = ((unsigned char)pBuf[4] << 8) | (unsigned char)pBuf[5];
+	iAnCount = ((unsigned char)pBuf[6] << 8) | (unsigned char)pBuf[7];
+
+	if (iAnCount == 0) return FALSE;
+
+	// Skip questions
+	iOffset = 12;
+	for (i = 0; i < iQdCount && iOffset < iLen; i++) {
+		// Skip QNAME
+		while (iOffset < iLen && pBuf[iOffset] != 0) {
+			if ((unsigned char)pBuf[iOffset] >= 0xC0) {
+				iOffset += 2; // Pointer
+				goto qname_done;
+			}
+			iOffset += 1 + (unsigned char)pBuf[iOffset];
+		}
+		iOffset++; // Skip null terminator
+qname_done:
+		iOffset += 4; // QTYPE + QCLASS
+	}
+
+	// Parse answers
+	for (i = 0; i < iAnCount && iOffset < iLen; i++) {
+		unsigned short usType, usRdLength;
+
+		// Skip NAME (may be pointer)
+		if (iOffset >= iLen) break;
+		if ((unsigned char)pBuf[iOffset] >= 0xC0) {
+			iOffset += 2;
+		} else {
+			while (iOffset < iLen && pBuf[iOffset] != 0) {
+				iOffset += 1 + (unsigned char)pBuf[iOffset];
+			}
+			iOffset++;
+		}
+
+		if (iOffset + 10 > iLen) break;
+
+		usType = ((unsigned char)pBuf[iOffset] << 8) | (unsigned char)pBuf[iOffset + 1];
+		// Skip CLASS (2) + TTL (4)
+		usRdLength = ((unsigned char)pBuf[iOffset + 8] << 8) | (unsigned char)pBuf[iOffset + 9];
+		iOffset += 10;
+
+		if (iOffset + usRdLength > iLen) break;
+
+		if (usType == 1 && usRdLength == 4 && !*pbHasIpv4) {
+			// A record
+			struct sockaddr_in* pSin;
+			ZeroMemory(pIpv4, sizeof(PXCH_IP_ADDRESS));
+			pIpv4->CommonHeader.wTag = PXCH_HOST_TYPE_IPV4;
+			pSin = (struct sockaddr_in*)&pIpv4->Sockaddr;
+			pSin->sin_family = AF_INET;
+			CopyMemory(&pSin->sin_addr, pBuf + iOffset, 4);
+			*pbHasIpv4 = TRUE;
+		} else if (usType == 28 && usRdLength == 16 && !*pbHasIpv6) {
+			// AAAA record
+			struct sockaddr_in6* pSin6;
+			ZeroMemory(pIpv6, sizeof(PXCH_IP_ADDRESS));
+			pIpv6->CommonHeader.wTag = PXCH_HOST_TYPE_IPV6;
+			pSin6 = (struct sockaddr_in6*)&pIpv6->Sockaddr;
+			pSin6->sin6_family = AF_INET6;
+			CopyMemory(&pSin6->sin6_addr, pBuf + iOffset, 16);
+			*pbHasIpv6 = TRUE;
+		}
+
+		iOffset += usRdLength;
+
+		if (*pbHasIpv4 && *pbHasIpv6) break;
+	}
+
+	return *pbHasIpv4 || *pbHasIpv6;
+}
+
+
+// Resolve a hostname through SOCKS5 UDP ASSOCIATE.
+// Uses the first SOCKS5 proxy in the chain. Falls back to direct resolution on error.
+// Returns TRUE if resolution succeeded via UDP associate.
+static BOOL ResolveDnsViaSocks5UdpAssociate(const PXCH_HOSTNAME* pHostname, PXCH_IP_ADDRESS* pIpv4, PXCH_IP_ADDRESS* pIpv6, BOOL* pbHasIpv4, BOOL* pbHasIpv6)
+{
+	PXCH_UINT32 dw;
+	const PXCH_PROXY_DATA* pSocks5Proxy = NULL;
+	struct sockaddr_in DnsServerAddr;
+	char szHostnameA[PXCH_MAX_HOSTNAME_BUFSIZE];
+	char DnsQueryBuf[512];
+	char DnsRespBuf[1024];
+	int iQueryLen;
+	int iRespLen = 0;
+	int iReturn;
+
+	*pbHasIpv4 = FALSE;
+	*pbHasIpv6 = FALSE;
+
+	if (!g_pPxchConfig || !g_pPxchConfig->dwWillUseUdpAssociateAsRemoteDns) return FALSE;
+
+	// Find first SOCKS5 proxy
+	for (dw = 0; dw < g_pPxchConfig->dwProxyNum; dw++) {
+		if (ProxyIsType(SOCKS5, PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) {
+			pSocks5Proxy = &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw];
+			break;
+		}
+	}
+	if (!pSocks5Proxy) {
+		FUNCIPCLOGW(L"UDP ASSOCIATE: No SOCKS5 proxy configured");
+		return FALSE;
+	}
+
+	// Set DNS server address
+	ZeroMemory(&DnsServerAddr, sizeof(DnsServerAddr));
+	DnsServerAddr.sin_family = AF_INET;
+	if (g_pPxchConfig->dwHasCustomDnsServer) {
+		const struct sockaddr_in* pCustomDns = (const struct sockaddr_in*)&g_pPxchConfig->CustomDnsServer.Sockaddr;
+		DnsServerAddr.sin_addr = pCustomDns->sin_addr;
+		DnsServerAddr.sin_port = htons((unsigned short)g_pPxchConfig->dwCustomDnsServerPort);
+	} else {
+		// Default: 8.8.8.8:53
+		DnsServerAddr.sin_addr.s_addr = htonl(0x08080808);
+		DnsServerAddr.sin_port = htons(53);
+	}
+
+	// Convert hostname to narrow string
+	WideCharToMultiByte(CP_ACP, 0, pHostname->szValue, -1, szHostnameA, sizeof(szHostnameA), NULL, NULL);
+
+	// Query A record
+	iQueryLen = BuildDnsQuery(DnsQueryBuf, sizeof(DnsQueryBuf), szHostnameA, FALSE);
+	if (iQueryLen > 0) {
+		iReturn = Socks5UdpAssociateDnsQuery(pSocks5Proxy, DnsQueryBuf, iQueryLen, &DnsServerAddr, DnsRespBuf, &iRespLen, sizeof(DnsRespBuf));
+		if (iReturn == 0 && iRespLen > 0) {
+			PXCH_IP_ADDRESS TempIpv4, TempIpv6;
+			BOOL bTempHasIpv4, bTempHasIpv6;
+			if (ParseDnsResponse(DnsRespBuf, iRespLen, &TempIpv4, &TempIpv6, &bTempHasIpv4, &bTempHasIpv6)) {
+				if (bTempHasIpv4) { *pIpv4 = TempIpv4; *pbHasIpv4 = TRUE; }
+			}
+		}
+	}
+
+	// Query AAAA record
+	iQueryLen = BuildDnsQuery(DnsQueryBuf, sizeof(DnsQueryBuf), szHostnameA, TRUE);
+	if (iQueryLen > 0) {
+		iReturn = Socks5UdpAssociateDnsQuery(pSocks5Proxy, DnsQueryBuf, iQueryLen, &DnsServerAddr, DnsRespBuf, &iRespLen, sizeof(DnsRespBuf));
+		if (iReturn == 0 && iRespLen > 0) {
+			PXCH_IP_ADDRESS TempIpv4, TempIpv6;
+			BOOL bTempHasIpv4, bTempHasIpv6;
+			if (ParseDnsResponse(DnsRespBuf, iRespLen, &TempIpv4, &TempIpv6, &bTempHasIpv4, &bTempHasIpv6)) {
+				if (bTempHasIpv6) { *pIpv6 = TempIpv6; *pbHasIpv6 = TRUE; }
+			}
+		}
+	}
+
+	if (*pbHasIpv4 || *pbHasIpv6) {
+		FUNCIPCLOGI(L"DNS via SOCKS5 UDP ASSOCIATE: %ls resolved (IPv4=%d, IPv6=%d)", pHostname->szValue, *pbHasIpv4, *pbHasIpv6);
+
+		// Add to cache
+		DnsCacheAdd(pHostname, pIpv4, pIpv6, *pbHasIpv4, *pbHasIpv6);
+		return TRUE;
+	}
+
+	FUNCIPCLOGW(L"DNS via SOCKS5 UDP ASSOCIATE: failed to resolve %ls", pHostname->szValue);
+	return FALSE;
+}
+
+
 static BOOL ResolveByHostsFile(PXCH_IP_ADDRESS* pIp, const PXCH_HOSTNAME* pHostname, int iFamily)
 {
 	PXCH_UINT32 i;
