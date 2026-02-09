@@ -463,3 +463,36 @@ Test that round-robin state persists across program runs:
    - Second run uses proxy2, state file shows "2"
    - Third run uses proxy3, state file shows "0" (wraps around)
    - Subsequent runs continue rotation from saved state
+
+### Test 15: Per-Process Log Files
+
+Test that each process gets its own log file:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   per_process_log_file
+   log_file_path = C:\Temp\proxychains_test
+   log_level = 500
+   
+   [ProxyList]
+   socks5 localhost 1080
+   ```
+
+2. Run multiple different applications:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe ping google.com
+   proxychains.exe notepad.exe
+   ```
+
+3. Check the log files directory:
+   ```cmd
+   dir C:\Temp\proxychains_test.*.log
+   ```
+
+4. Expected result:
+   - Separate log file for each process
+   - Files named like: `proxychains_test.curl.exe.1234.log`
+   - Each file contains only logs for that specific process
+   - Files include process ID in filename for uniqueness

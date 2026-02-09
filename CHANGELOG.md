@@ -2,6 +2,27 @@
 
 All notable changes to proxychains-windows will be documented in this file.
 
+## [Unreleased] - Per-Process Log Files
+
+### Added
+- **Per-Process Log Files**: Separate log file for each proxied process
+  - New configuration options: `per_process_log_file` and `log_file_path`
+  - Log files named: `<log_file_path>.<process_name>.<pid>.log`
+  - Useful for debugging multiple processes simultaneously
+  - Configurable log file path base directory
+  - Automatic log file creation per process
+
+### Configuration
+```conf
+# Enable per-process log files
+per_process_log_file
+log_file_path = C:\Temp\proxychains
+```
+
+This creates log files like:
+- `C:\Temp\proxychains.curl.exe.1234.log`
+- `C:\Temp\proxychains.firefox.exe.5678.log`
+
 ## [Unreleased] - Persistent Round-Robin State
 
 ### Added

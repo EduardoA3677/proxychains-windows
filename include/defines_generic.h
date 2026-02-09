@@ -379,6 +379,10 @@ typedef struct _PROXYCHAINS_CONFIG {
 	wchar_t szHookDllPathX64[PXCH_MAX_DLL_PATH_BUFSIZE];
 	wchar_t szMinHookDllPathX86[PXCH_MAX_DLL_PATH_BUFSIZE];
 	wchar_t szMinHookDllPathX64[PXCH_MAX_DLL_PATH_BUFSIZE];
+	
+	// Per-process log file configuration
+	wchar_t szLogFilePath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+	PXCH_UINT32 dwEnablePerProcessLogFile;
 	wchar_t szHostsFilePath[PXCH_MAX_HOSTS_FILE_PATH_BUFSIZE];
 	wchar_t szCommandLine[PXCH_MAX_COMMAND_LINE_BUFSIZE];
 

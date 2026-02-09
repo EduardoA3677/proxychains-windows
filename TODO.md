@@ -68,12 +68,12 @@
 - **Impact**: Medium - Future-proofing
 
 ### Logging and Debugging
+- [x] Per-process log files
 - [ ] Structured logging (JSON output option)
-- [ ] Per-process log files
 - [ ] Log rotation
 - [ ] Performance metrics logging
 - [ ] Visual Studio debug output improvements
-- **Status**: Basic logging exists
+- **Status**: Per-process log files implemented
 - **Difficulty**: Low
 - **Impact**: Medium - Better troubleshooting
 

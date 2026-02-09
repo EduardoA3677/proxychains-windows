@@ -852,6 +852,8 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	pPxchConfig->dwCurrentProxyIndex = 0;
 	pPxchConfig->dwEnablePersistentRoundRobin = FALSE;
 	pPxchConfig->szRoundRobinStateFile[0] = L'\0';
+	pPxchConfig->dwEnablePerProcessLogFile = FALSE;
+	pPxchConfig->szLogFilePath[0] = L'\0';
 
 	// Parse configuration file
 
@@ -921,6 +923,21 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 				if (OptionGetNumberValueAfterOptionName(&lValue, sOptionNameEnd, NULL, 0, 1000) == -1) goto err_invalid_config_with_msg;
 				pPxchConfig->dwLogLevel = (DWORD)lValue;
 			}
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"per_process_log_file")) {
+			pTempPxchConfig->dwEnablePerProcessLogFile = TRUE;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"log_file_path")) {
+			WCHAR* sPathStart;
+			WCHAR* sPathEnd;
+			
+			sPathStart = ConsumeStringInSet(sOptionNameEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sPathEnd = ConsumeStringUntilSet(sPathStart, NULL, PXCH_CONFIG_PARSE_WHITE L"#");
+			
+			if (sPathStart == sPathEnd) {
+				pszParseErrorMessage = L"log_file_path missing";
+				goto err_invalid_config_with_msg;
+			}
+			
+			StringCchCopyNW(pTempPxchConfig->szLogFilePath, _countof(pTempPxchConfig->szLogFilePath), sPathStart, sPathEnd - sPathStart);
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"proxy_dns")) {
 			pTempPxchConfig->dwWillUseFakeIpAsRemoteDns = TRUE;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"proxy_dns_udp_associate")) {
