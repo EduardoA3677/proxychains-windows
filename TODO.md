@@ -210,18 +210,19 @@
 1. ~~Implement dynamic chain support (skip dead proxies)~~ ✅ Done
 2. ~~Add HTTP/HTTPS proxy support~~ ✅ Done
 3. Create unit testing framework
-4. ~~Improve documentation~~ ✅ Done (CONTRIBUTING.md created)
+4. ~~Improve documentation~~ ✅ Done (CONTRIBUTING.md, API_HOOKS.md created)
 
 ### Short Term (1-2 months)
 1. ~~Implement round-robin and random chain modes~~ ✅ Done
 2. UDP associate for DNS
-3. Enhanced logging system
+3. ~~Enhanced logging system~~ ✅ Done (health tracking metrics)
 4. Security audit
+5. ~~Proxy health checking and failover~~ ✅ Done
 
 ### Long Term (3-6 months)
 1. GUI application
 2. Performance optimizations
-3. Advanced proxy authentication
+3. ~~Advanced proxy authentication~~ ✅ Done (SOCKS5/SOCKS4/HTTP auth)
 4. Full IPv6 support
 
 ## Contributing

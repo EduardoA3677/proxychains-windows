@@ -177,12 +177,16 @@ This version has been updated for full Windows 11 compatibility:
 
 ## Existing Features
 
-- Multiple SOCKS5 proxy chaining
+- Multiple proxy chaining with SOCKS5, SOCKS4/SOCKS4a, and HTTP CONNECT proxies
+- Four chain modes: strict, dynamic (skip dead), random, and round-robin
+- Proxy health checking with automatic failover (dynamic chain)
 - Fake IP based remote DNS resolution
 - IPv4 and IPv6 support
 - Configurable timeout values
-- Rule-based proxy selection (IP range, domain)
-- Custom hosts file support
+- Rule-based proxy selection (IP range, domain keyword/suffix/full, port)
+- Custom hosts file support with environment variable expansion
+- Proxy authentication: SOCKS5 username/password, SOCKS4 userid, HTTP Basic
+- Configurable chain length and random seed for reproducible testing
 
 # How It Works
 

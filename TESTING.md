@@ -279,23 +279,66 @@ Both the parent (cmd.exe) and child (curl.exe) should be proxied.
 - Verify the correct architecture DLL is being injected
 - Check if application is compatible with DLL injection
 
+### Issue: Proxy Connection Timeout
+
+**Symptoms:** Long delays or `WSAETIMEDOUT` errors
+**Solution:**
+- Check proxy server is running and reachable
+- Increase timeouts in config: `tcp_connect_time_out 10000` and `tcp_read_time_out 15000`
+- Check firewall is not blocking the proxy port
+- Try connecting directly to the proxy server with a SOCKS client
+- In dynamic chain mode, check logs for "proxy marked dead" messages - the proxy may have been auto-skipped after 3 failures
+
+### Issue: DNS Leak
+
+**Symptoms:** DNS queries bypass the proxy
+**Solution:**
+- Ensure `proxy_dns` is enabled in `proxychains.conf`
+- Use `DOMAIN-KEYWORD` or `DOMAIN-SUFFIX` rules for specific domains
+- Check that the application uses `getaddrinfo()` or `gethostbyname()` (statically linked resolvers are not hooked)
+- For UDP-based DNS: proxychains currently only intercepts TCP DNS queries
+
+### Issue: Child Processes Not Proxied
+
+**Symptoms:** Main application proxied but spawned processes are not
+**Solution:**
+- This is expected for "fork-and-exit" patterns where the parent exits immediately
+- If `delete_fake_ip_after_child_exits` is set to 1, fake IP entries may be cleaned up too early
+- Check logs for `CreateProcessW` hook messages to verify injection into child processes
+
+### Issue: PowerShell wget Compatibility
+
+**Symptoms:** `Invoke-WebRequest` or `wget` alias fails through proxy
+**Solution:**
+- PowerShell's `Invoke-WebRequest` uses .NET HTTP stack which may not go through Winsock hooks
+- Use `curl.exe` instead: `proxychains.exe curl.exe https://example.com`
+- Or use PowerShell's `[System.Net.WebClient]` with explicit proxy settings
+
 ## Logging and Debugging
 
 Enable debug logging for troubleshooting:
 
 1. Edit `proxychains.conf`:
    ```
-   # Uncomment to see more details
-   #quiet_mode
+   # Set verbose logging
+   log_level 600
    ```
 
 2. Set log level in config or via command line:
    ```cmd
-   proxychains.exe -q <application>  # quiet
-   proxychains.exe -v <application>  # verbose
+   proxychains.exe -q <application>  # quiet (errors only)
+   proxychains.exe -v <application>  # verbose (maximum detail)
    ```
 
 3. Check Windows Event Viewer for application errors
+
+4. Log level reference:
+   - `600` - VERBOSE: All messages including per-byte I/O details
+   - `500` - DEBUG: Connection routing, proxy selection, health tracking
+   - `400` - INFO: Proxy connections, chain mode selection
+   - `300` - WARNING: Proxy failures, timeouts, health-based skips
+   - `200` - ERROR: Chain failures, configuration errors
+   - `100` - CRITICAL: Fatal errors only
 
 ## Expected Results
 
