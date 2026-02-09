@@ -696,8 +696,8 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	if (FAILED(StringCchCopyW(pPxchConfig->szHookDllPathX86, PXCH_MAX_DLL_PATH_BUFSIZE, pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
 	if (FAILED(StringCchCopyW(pPxchConfig->szMinHookDllPathX64, PXCH_MAX_DLL_PATH_BUFSIZE, pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
 	if (FAILED(StringCchCopyW(pPxchConfig->szMinHookDllPathX86, PXCH_MAX_DLL_PATH_BUFSIZE, pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
-	if (FAILED(StringCchPrintfA(szHelperX64CommandLine, PXCH_MAX_HELPER_PATH_BUFSIZE, "%ls", pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
-	if (FAILED(StringCchPrintfA(szHelperX86CommandLine, PXCH_MAX_HELPER_PATH_BUFSIZE, "%ls", pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
+	if (FAILED(StringCchPrintfA(szHelperX64CommandLine, PXCH_MAX_HELPER_PATH_BUFSIZE, "\"%ls", pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
+	if (FAILED(StringCchPrintfA(szHelperX86CommandLine, PXCH_MAX_HELPER_PATH_BUFSIZE, "\"%ls", pPxchConfig->szHookDllPathX64))) goto err_insuf_buf;
 
 #ifdef __CYGWIN__
 	{
