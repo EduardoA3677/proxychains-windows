@@ -3,11 +3,11 @@
 ## High Priority Features
 
 ### Dynamic Chain Support
-- [ ] Implement dynamic chain mode (skip dead proxies)
+- [x] Implement dynamic chain mode (skip dead proxies)
 - [ ] Add proxy health checking mechanism
 - [ ] Implement automatic proxy failover
 - [ ] Add timeout-based proxy detection
-- **Status**: Not implemented (currently only strict chain is supported)
+- **Status**: Dynamic chain mode implemented (dead proxies are skipped during connection)
 - **Difficulty**: Medium
 - **Impact**: High - Better reliability when proxies fail
 
@@ -21,10 +21,10 @@
 - **Impact**: Medium - Load balancing across proxies
 
 ### Random Chain Support
-- [ ] Implement random proxy selection
-- [ ] Configurable chain length
+- [x] Implement random proxy selection
+- [x] Configurable chain length
 - [ ] Random seed configuration
-- **Status**: Not implemented
+- **Status**: Random chain mode implemented with configurable chain_len
 - **Difficulty**: Low
 - **Impact**: Low - Useful for testing
 

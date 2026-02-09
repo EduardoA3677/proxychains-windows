@@ -2,9 +2,12 @@
 
 All notable changes to proxychains-windows will be documented in this file.
 
-## [Unreleased] - Cross-Architecture Support and Windows 11 Improvements
+## [Unreleased] - Dynamic Chain, Random Chain, and Cross-Architecture Support
 
 ### Added
+- **Dynamic Chain Support**: New `dynamic_chain` mode that skips dead/unreachable proxies and continues with alive ones. At least one proxy must be online for the chain to work.
+- **Random Chain Support**: New `random_chain` mode that randomly selects proxies from the list. Configurable `chain_len` parameter controls how many proxies are used per connection.
+- **Chain Type Configuration**: Three chain modes now supported: `strict_chain` (default, all proxies must be online), `dynamic_chain` (skip dead proxies), and `random_chain` (random proxy selection).
 - **Unified Binary Support**: x64 build now automatically detects and injects into both x64 and x86 (32-bit) processes
 - **Automatic Architecture Detection**: Uses `IsWow64Process()` to determine target process architecture
 - **Smart DLL Selection**: Automatically selects correct hook DLL (x86 or x64) based on target process

@@ -671,6 +671,9 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	pPxchConfig->dwWillUseFakeIpAsRemoteDns = FALSE;
 	pPxchConfig->dwWillGenFakeIpUsingHashedHostname = TRUE;
 
+	pPxchConfig->dwChainType = PXCH_CHAIN_TYPE_STRICT;
+	pPxchConfig->dwChainLen = 1;
+
 	// Parse configuration file
 
 	if ((dwLastError = OpenConfigurationFile(pTempPxchConfig)) != NO_ERROR) goto err_general;
@@ -695,12 +698,14 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 			LOGE(L"Config line %llu: Unknown proxy: %.*ls", ullLineNum, sOptionNameEnd - sOption, sOption);
 			goto err_invalid_config;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"strict_chain")) {
+			pTempPxchConfig->dwChainType = PXCH_CHAIN_TYPE_STRICT;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"dynamic_chain")) {
+			pTempPxchConfig->dwChainType = PXCH_CHAIN_TYPE_DYNAMIC;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"random_chain")) {
-			pszParseErrorMessage = L"random_chain is not supported!";
-			goto err_invalid_config_with_msg;
+			pTempPxchConfig->dwChainType = PXCH_CHAIN_TYPE_RANDOM;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"chain_len")) {
-			pszParseErrorMessage = L"chain_len is not supported!";
-			goto err_invalid_config_with_msg;
+			if (OptionGetNumberValueAfterOptionName(&lValue, sOptionNameEnd, NULL, 1, PXCH_MAX_PROXY_NUM) == -1) goto err_invalid_config_with_msg;
+			pTempPxchConfig->dwChainLen = (PXCH_UINT32)lValue;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"quiet_mode")) {
 			if (!pTempPxchConfig->dwLogLevelSetByArg) {
 				LOGD(L"Queit mode enabled in configuration file");

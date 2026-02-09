@@ -88,6 +88,49 @@ curl https://ifconfig.me
 
 Both the parent (cmd.exe) and child (curl.exe) should be proxied.
 
+## Testing Chain Modes
+
+### Test 6: Strict Chain Mode (Default)
+
+1. Configure `proxychains.conf` with `strict_chain` and multiple proxies
+2. All proxies must be online for the chain to work
+3. Test:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. If any proxy is down, the connection should fail
+
+### Test 7: Dynamic Chain Mode
+
+1. Configure `proxychains.conf`:
+   ```
+   dynamic_chain
+   ```
+2. Add multiple proxies in `[ProxyList]`, with at least one intentionally dead
+3. Test:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. Check logs - dead proxies should show a warning and be skipped
+5. Connection should succeed through the alive proxy/proxies
+6. If ALL proxies are dead, the connection should fail
+
+### Test 8: Random Chain Mode
+
+1. Configure `proxychains.conf`:
+   ```
+   random_chain
+   chain_len = 1
+   ```
+2. Add multiple working proxies in `[ProxyList]`
+3. Test multiple times:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. Check logs - different proxies should be selected each time
+5. Verify `chain_len` controls how many proxies are used per connection
+
 ## Windows 11 Specific Testing
 
 ### Test on Windows 11

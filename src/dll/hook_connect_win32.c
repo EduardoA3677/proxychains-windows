@@ -878,6 +878,82 @@ err_return:
 	return iReturn;
 }
 
+static int TunnelThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PXCH_CHAIN* pChain)
+{
+	int iReturn;
+	DWORD dw;
+	PXCH_UINT32 dwChainType = g_pPxchConfig->dwChainType;
+	PXCH_UINT32 dwProxyNum = g_pPxchConfig->dwProxyNum;
+
+	if (dwChainType == PXCH_CHAIN_TYPE_DYNAMIC) {
+		PXCH_UINT32 dwAliveCount = 0;
+
+		FUNCIPCLOGD(L"Using dynamic chain mode");
+		for (dw = 0; dw < dwProxyNum; dw++) {
+			iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw]);
+			if (iReturn == SOCKET_ERROR) {
+				FUNCIPCLOGW(L"Dynamic chain: proxy %lu failed, skipping", (unsigned long)dw);
+				continue;
+			}
+			dwAliveCount++;
+		}
+
+		if (dwAliveCount == 0) {
+			FUNCIPCLOGE(L"Dynamic chain: all proxies failed!");
+			return SOCKET_ERROR;
+		}
+
+		FUNCIPCLOGD(L"Dynamic chain: %lu/%lu proxies alive", (unsigned long)dwAliveCount, (unsigned long)dwProxyNum);
+		return 0;
+	} else if (dwChainType == PXCH_CHAIN_TYPE_RANDOM) {
+		PXCH_UINT32 dwChainLen = g_pPxchConfig->dwChainLen;
+		PXCH_UINT32 dwUsed[PXCH_MAX_PROXY_NUM] = { 0 };
+		PXCH_UINT32 dwSelected;
+		PXCH_UINT32 dwCount = 0;
+		PXCH_UINT32 dwAttempts;
+
+		if (dwChainLen > dwProxyNum) {
+			dwChainLen = dwProxyNum;
+		}
+
+		FUNCIPCLOGD(L"Using random chain mode (chain_len=%lu)", (unsigned long)dwChainLen);
+		srand((unsigned int)GetTickCount());
+
+		while (dwCount < dwChainLen) {
+			dwAttempts = 0;
+			do {
+				dwSelected = (PXCH_UINT32)(rand() % dwProxyNum);
+				dwAttempts++;
+				if (dwAttempts > dwProxyNum * 10) {
+					FUNCIPCLOGE(L"Random chain: unable to select enough unique proxies");
+					return SOCKET_ERROR;
+				}
+			} while (dwUsed[dwSelected]);
+
+			dwUsed[dwSelected] = 1;
+
+			iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dwSelected]);
+			if (iReturn == SOCKET_ERROR) {
+				FUNCIPCLOGW(L"Random chain: proxy %lu failed", (unsigned long)dwSelected);
+				return SOCKET_ERROR;
+			}
+			dwCount++;
+		}
+
+		FUNCIPCLOGD(L"Random chain: successfully tunneled through %lu proxies", (unsigned long)dwCount);
+		return 0;
+	} else {
+		/* PXCH_CHAIN_TYPE_STRICT (default) */
+		FUNCIPCLOGD(L"Using strict chain mode");
+		for (dw = 0; dw < dwProxyNum; dw++) {
+			if ((iReturn = Ws2_32_GenericTunnelTo(pTempData, s, pChain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) {
+				return SOCKET_ERROR;
+			}
+		}
+		return 0;
+	}
+}
+
 // Hook connect
 
 PROXY_FUNC2(Ws2_32, connect)
@@ -897,8 +973,6 @@ PROXY_FUNC2(Ws2_32, connect)
 
 	PXCH_HOSTNAME_PORT ReverseLookedupHostnamePort = { 0 };
 	PXCH_IP_PORT ReverseLookedupResolvedIpPort = { 0 };
-
-	DWORD dw;
 
 	RestoreChildDataIfNecessary();
 
@@ -924,9 +998,7 @@ PROXY_FUNC2(Ws2_32, connect)
 		goto block_end;
 	}
 
-	for (dw = 0; dw < g_pPxchConfig->dwProxyNum; dw++) {
-		if ((iReturn = Ws2_32_GenericTunnelTo(&TempData, s, &Chain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) goto record_error_end;
-	}
+	if ((iReturn = TunnelThroughProxyChain(&TempData, s, &Chain)) == SOCKET_ERROR) goto record_error_end;
 	if ((iReturn = Ws2_32_GenericConnectTo(&TempData, s, &Chain, pHostPortForProxiedConnection, namelen)) == SOCKET_ERROR) goto record_error_end;
 
 success_revert_connect_errcode_end:
@@ -1002,8 +1074,6 @@ PROXY_FUNC2(Mswsock, ConnectEx)
 	PXCH_HOSTNAME_PORT ReverseLookedupHostnamePort = { 0 };
 	PXCH_IP_PORT ReverseLookedupResolvedIpPort = { 0 };
 
-	DWORD dw;
-
 	RestoreChildDataIfNecessary();
 
 	FUNCIPCLOGD(L"Mswsock.dll (FP)ConnectEx(%d, %ls, %d) called", s, FormatHostPortToStr(name, namelen), namelen);
@@ -1028,9 +1098,7 @@ PROXY_FUNC2(Mswsock, ConnectEx)
 		goto block_end;
 	}
 
-	for (dw = 0; dw < g_pPxchConfig->dwProxyNum; dw++) {
-		if ((iReturn = Ws2_32_GenericTunnelTo(&TempData, s, &Chain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) goto record_error_end;
-	}
+	if ((iReturn = TunnelThroughProxyChain(&TempData, s, &Chain)) == SOCKET_ERROR) goto record_error_end;
 	if ((iReturn = Ws2_32_GenericConnectTo(&TempData, s, &Chain, pHostPortForProxiedConnection, namelen)) == SOCKET_ERROR) goto record_error_end;
 
 success_set_errcode_zero_end:
@@ -1114,8 +1182,6 @@ PROXY_FUNC2(Ws2_32, WSAConnect)
 	PXCH_HOSTNAME_PORT ReverseLookedupHostnamePort = { 0 };
 	PXCH_IP_PORT ReverseLookedupResolvedIpPort = { 0 };
 
-	DWORD dw;
-
 	RestoreChildDataIfNecessary();
 
 	FUNCIPCLOGD(L"Ws2_32.dll WSAConnect(%d, %ls, %d) called", s, FormatHostPortToStr(name, namelen), namelen);
@@ -1147,9 +1213,7 @@ PROXY_FUNC2(Ws2_32, WSAConnect)
 		goto block_end;
 	}
 
-	for (dw = 0; dw < g_pPxchConfig->dwProxyNum; dw++) {
-		if ((iReturn = Ws2_32_GenericTunnelTo(&TempData, s, &Chain, &PXCH_CONFIG_PROXY_ARR(g_pPxchConfig)[dw])) == SOCKET_ERROR) goto record_error_end;
-	}
+	if ((iReturn = TunnelThroughProxyChain(&TempData, s, &Chain)) == SOCKET_ERROR) goto record_error_end;
 	if ((iReturn = Ws2_32_GenericConnectTo(&TempData, s, &Chain, pHostPortForProxiedConnection, namelen)) == SOCKET_ERROR) goto record_error_end;
 
 success_revert_connect_errcode_end:
