@@ -767,14 +767,15 @@ PXCH_DLL_API int Ws2_32_HttpConnect(void* pTempData, PXCH_UINT_PTR s, const PXCH
 
 	if (HostIsType(IPV4, *pHostPort)) {
 		const struct sockaddr_in* pSockAddrIpv4 = (const struct sockaddr_in*)pHostPort;
-		char szIp[32];
-		InetNtopA(AF_INET, &pSockAddrIpv4->sin_addr, szIp, _countof(szIp));
-		StringCchPrintfA(szHostPort, _countof(szHostPort), "%s:%u", szIp, (unsigned)wPort);
+		const unsigned char* b = (const unsigned char*)&pSockAddrIpv4->sin_addr;
+		StringCchPrintfA(szHostPort, _countof(szHostPort), "%u.%u.%u.%u:%u", b[0], b[1], b[2], b[3], (unsigned)wPort);
 	} else if (HostIsType(IPV6, *pHostPort)) {
 		const struct sockaddr_in6* pSockAddrIpv6 = (const struct sockaddr_in6*)pHostPort;
-		char szIp[64];
-		InetNtopA(AF_INET6, &pSockAddrIpv6->sin6_addr, szIp, _countof(szIp));
-		StringCchPrintfA(szHostPort, _countof(szHostPort), "[%s]:%u", szIp, (unsigned)wPort);
+		const unsigned char* b = (const unsigned char*)&pSockAddrIpv6->sin6_addr;
+		StringCchPrintfA(szHostPort, _countof(szHostPort), "[%x:%x:%x:%x:%x:%x:%x:%x]:%u",
+			(b[0] << 8) | b[1], (b[2] << 8) | b[3], (b[4] << 8) | b[5], (b[6] << 8) | b[7],
+			(b[8] << 8) | b[9], (b[10] << 8) | b[11], (b[12] << 8) | b[13], (b[14] << 8) | b[15],
+			(unsigned)wPort);
 	} else if (HostIsType(HOSTNAME, *pHostPort)) {
 		const PXCH_HOSTNAME_PORT* pAddrHostname = (const PXCH_HOSTNAME_PORT*)pHostPort;
 		StringCchPrintfA(szHostPort, _countof(szHostPort), "%ls:%u", pAddrHostname->szValue, (unsigned)wPort);
