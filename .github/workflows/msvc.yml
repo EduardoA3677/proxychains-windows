@@ -32,6 +32,8 @@ jobs:
         copy win32_output\proxychains_win32_x64.exe release-package\proxychains.exe
         copy win32_output\proxychains_hook_x64.dll release-package\
         copy win32_output\proxychains_hook_x86.dll release-package\
+        copy win32_output\proxychains_helper_win32_x86.exe release-package\
+        copy win32_output\proxychains_helper_win32_x64.exe release-package\
         if exist win32_output\MinHook.x64.dll copy win32_output\MinHook.x64.dll release-package\
         if exist win32_output\MinHook.x86.dll copy win32_output\MinHook.x86.dll release-package\
         copy proxychains.conf release-package\

@@ -39,6 +39,7 @@
 #pragma comment(lib, "Shlwapi.lib")
 #pragma comment(lib, "Ws2_32.lib")
 #define popen _popen
+#define pclose _pclose
 #endif
 
 #define PXCH_CONFIG_PARSE_WHITE L" \n\t\r\v"
@@ -1265,6 +1266,7 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 
 		if (fHelperProcOut == NULL) {
 			LOGW(L"Warning: X86 Helper executable " WPRS L" not found. In this case proxychains.exe will not inject X86 descendant processes.", szHelperX86CommandLine);
+			LOGW(L"Ensure proxychains_helper_win32_x86.exe is in the same directory as proxychains.exe.");
 		} else {
 			unsigned long long tmp;
 			int i;
@@ -1310,6 +1312,7 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 				default: bStop = TRUE; break;
 				}
 			}
+			pclose(fHelperProcOut);
 		}
 	}
 #endif
