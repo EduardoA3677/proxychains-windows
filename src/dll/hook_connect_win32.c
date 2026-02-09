@@ -1254,6 +1254,21 @@ static int Ws2_32_LoopThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PPXCH_
 		g_pPxchConfig->dwCurrentProxyIndex = (dwStartIndex + dwChainLen) % dwProxyNum;
 		IPCLOGI(L"Round-robin chain: %d proxies connected successfully, next start index: %d", 
 			dwSuccessfulConnections, g_pPxchConfig->dwCurrentProxyIndex);
+		
+		// Save persistent state if enabled
+		if (g_pPxchConfig->dwEnablePersistentRoundRobin && g_pPxchConfig->szRoundRobinStateFile[0] != L'\0') {
+			HANDLE hFile = CreateFileW(g_pPxchConfig->szRoundRobinStateFile, GENERIC_WRITE, 0, NULL, 
+				CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+			if (hFile != INVALID_HANDLE_VALUE) {
+				char szState[64];
+				DWORD dwWritten;
+				int iLen = sprintf_s(szState, sizeof(szState), "%u\n", g_pPxchConfig->dwCurrentProxyIndex);
+				if (iLen > 0) {
+					WriteFile(hFile, szState, iLen, &dwWritten, NULL);
+				}
+				CloseHandle(hFile);
+			}
+		}
 		break;
 
 	default:

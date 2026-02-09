@@ -2,6 +2,31 @@
 
 All notable changes to proxychains-windows will be documented in this file.
 
+## [Unreleased] - Persistent Round-Robin State
+
+### Added
+- **Persistent Round-Robin State**: Round-robin mode now remembers position across restarts
+  - New configuration options: `persistent_round_robin` and `round_robin_state_file`
+  - Automatically saves current proxy index to state file
+  - Loads state on startup for true load balancing
+  - File-based state storage with automatic creation
+  - Default state file can be customized via config
+
+### Implementation Details
+- Added `dwEnablePersistentRoundRobin` and `szRoundRobinStateFile` to `PROXYCHAINS_CONFIG`
+- `SaveRoundRobinState()` writes current index to file after each rotation
+- `LoadRoundRobinState()` reads state on configuration load
+- State file format: simple text file with index number
+- Handles missing file gracefully (starts from 0)
+- File locking prevents corruption from concurrent access
+
+### Configuration
+```conf
+# Enable persistent round-robin state
+persistent_round_robin
+round_robin_state_file = C:\Users\YourName\.proxychains\roundrobin.state
+```
+
 ## [Unreleased] - Bug Fixes and Improvements
 
 ### Fixed

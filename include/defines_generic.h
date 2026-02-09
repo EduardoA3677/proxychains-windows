@@ -453,6 +453,9 @@ typedef struct _PROXYCHAINS_CONFIG {
 	PXCH_UINT32 dwChainMode;
 	PXCH_UINT32 dwChainLen;
 	PXCH_UINT32 dwCurrentProxyIndex;
+	
+	WCHAR szRoundRobinStateFile[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+	PXCH_UINT32 dwEnablePersistentRoundRobin;
 } PROXYCHAINS_CONFIG;
 #pragma pack(pop)
 

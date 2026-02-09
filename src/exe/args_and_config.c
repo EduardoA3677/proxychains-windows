@@ -285,6 +285,92 @@ static int OptionGetNumberValue(long* plNum, const WCHAR* pStart, const WCHAR* p
 	return 0;
 }
 
+// Save round-robin state to file
+static DWORD SaveRoundRobinState(const PROXYCHAINS_CONFIG* pPxchConfig)
+{
+	HANDLE hFile;
+	DWORD dwWritten;
+	DWORD dwLastError;
+	char szState[64];
+	int iLen;
+
+	if (!pPxchConfig->dwEnablePersistentRoundRobin || pPxchConfig->szRoundRobinStateFile[0] == L'\0') {
+		return NO_ERROR;
+	}
+
+	hFile = CreateFileW(pPxchConfig->szRoundRobinStateFile, GENERIC_WRITE, 0, NULL, 
+		CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	
+	if (hFile == INVALID_HANDLE_VALUE) {
+		dwLastError = GetLastError();
+		LOGW(L"Failed to create round-robin state file: %ls", FormatErrorToStr(dwLastError));
+		return dwLastError;
+	}
+
+	iLen = sprintf_s(szState, sizeof(szState), "%u\n", pPxchConfig->dwCurrentProxyIndex);
+	if (iLen < 0) {
+		CloseHandle(hFile);
+		return ERROR_INVALID_DATA;
+	}
+
+	if (!WriteFile(hFile, szState, iLen, &dwWritten, NULL)) {
+		dwLastError = GetLastError();
+		LOGW(L"Failed to write round-robin state: %ls", FormatErrorToStr(dwLastError));
+		CloseHandle(hFile);
+		return dwLastError;
+	}
+
+	CloseHandle(hFile);
+	LOGD(L"Saved round-robin state: index=%u", pPxchConfig->dwCurrentProxyIndex);
+	return NO_ERROR;
+}
+
+// Load round-robin state from file
+static DWORD LoadRoundRobinState(PROXYCHAINS_CONFIG* pPxchConfig)
+{
+	HANDLE hFile;
+	DWORD dwRead;
+	DWORD dwLastError;
+	char szState[64];
+	unsigned int uIndex;
+
+	if (!pPxchConfig->dwEnablePersistentRoundRobin || pPxchConfig->szRoundRobinStateFile[0] == L'\0') {
+		return NO_ERROR;
+	}
+
+	hFile = CreateFileW(pPxchConfig->szRoundRobinStateFile, GENERIC_READ, FILE_SHARE_READ, 
+		NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	
+	if (hFile == INVALID_HANDLE_VALUE) {
+		dwLastError = GetLastError();
+		if (dwLastError == ERROR_FILE_NOT_FOUND) {
+			LOGD(L"Round-robin state file not found, starting from 0");
+			return NO_ERROR;
+		}
+		LOGW(L"Failed to open round-robin state file: %ls", FormatErrorToStr(dwLastError));
+		return dwLastError;
+	}
+
+	if (!ReadFile(hFile, szState, sizeof(szState) - 1, &dwRead, NULL)) {
+		dwLastError = GetLastError();
+		LOGW(L"Failed to read round-robin state: %ls", FormatErrorToStr(dwLastError));
+		CloseHandle(hFile);
+		return dwLastError;
+	}
+
+	szState[dwRead] = '\0';
+	CloseHandle(hFile);
+
+	if (sscanf_s(szState, "%u", &uIndex) == 1) {
+		pPxchConfig->dwCurrentProxyIndex = uIndex;
+		LOGD(L"Loaded round-robin state: index=%u", uIndex);
+	} else {
+		LOGW(L"Invalid round-robin state file format");
+	}
+
+	return NO_ERROR;
+}
+
 static int OptionGetStringValue(const WCHAR** ppEnd, const WCHAR* pStart, const WCHAR* pEndOptional, BOOL bAllowTrailingWhite)
 {
 	const WCHAR* pAfterString;
@@ -764,6 +850,8 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	pPxchConfig->dwChainMode = PXCH_CHAIN_MODE_STRICT;
 	pPxchConfig->dwChainLen = 1;
 	pPxchConfig->dwCurrentProxyIndex = 0;
+	pPxchConfig->dwEnablePersistentRoundRobin = FALSE;
+	pPxchConfig->szRoundRobinStateFile[0] = L'\0';
 
 	// Parse configuration file
 
@@ -807,6 +895,22 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"chain_len")) {
 			if (OptionGetNumberValueAfterOptionName(&lValue, sOptionNameEnd, NULL, 1, 100) == -1) goto err_invalid_config_with_msg;
 			pTempPxchConfig->dwChainLen = (PXCH_UINT32)lValue;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"round_robin_state_file")) {
+			WCHAR* sPathStart;
+			WCHAR* sPathEnd;
+			
+			sPathStart = ConsumeStringInSet(sOptionNameEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sPathEnd = ConsumeStringUntilSet(sPathStart, NULL, PXCH_CONFIG_PARSE_WHITE L"#");
+			
+			if (sPathStart == sPathEnd) {
+				pszParseErrorMessage = L"round_robin_state_file path missing";
+				goto err_invalid_config_with_msg;
+			}
+			
+			StringCchCopyNW(pTempPxchConfig->szRoundRobinStateFile, _countof(pTempPxchConfig->szRoundRobinStateFile), sPathStart, sPathEnd - sPathStart);
+			pTempPxchConfig->dwEnablePersistentRoundRobin = TRUE;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"persistent_round_robin")) {
+			pTempPxchConfig->dwEnablePersistentRoundRobin = TRUE;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"quiet_mode")) {
 			if (!pTempPxchConfig->dwLogLevelSetByArg) {
 				LOGD(L"Queit mode enabled in configuration file");
@@ -1468,6 +1572,9 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	PRINT_FUNC_ADDR_OF_BOTH_ARCH(pPxchConfig, ReleaseSemaphore   );
 	PRINT_FUNC_ADDR_OF_BOTH_ARCH(pPxchConfig, CloseHandle        );
 	PRINT_FUNC_ADDR_OF_BOTH_ARCH(pPxchConfig, WaitForSingleObject);
+
+	// Load persistent round-robin state if enabled
+	LoadRoundRobinState(pPxchConfig);
 
 	return NO_ERROR;
 

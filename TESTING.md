@@ -429,3 +429,37 @@ Test mixing different SOCKS versions:
    ```
 
 3. Expected result: Connection goes through all SOCKS proxies in sequence
+
+### Test 14: Persistent Round-Robin State
+
+Test that round-robin state persists across program runs:
+
+1. Edit `proxychains.conf`:
+   ```
+   round_robin_chain
+   persistent_round_robin
+   round_robin_state_file = C:\Temp\proxychains_rr_state.txt
+   
+   [ProxyList]
+   socks5 proxy1.example.com 1080
+   socks5 proxy2.example.com 1080
+   socks5 proxy3.example.com 1080
+   ```
+
+2. Run multiple times:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Check the state file:
+   ```cmd
+   type C:\Temp\proxychains_rr_state.txt
+   ```
+
+4. Expected result: 
+   - First run uses proxy1, state file shows "1"
+   - Second run uses proxy2, state file shows "2"
+   - Third run uses proxy3, state file shows "0" (wraps around)
+   - Subsequent runs continue rotation from saved state
