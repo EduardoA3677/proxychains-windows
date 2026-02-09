@@ -57,12 +57,12 @@ OR MISUSE OF THIS SOFTWARE AND THE RESULTING CONSEQUENCES.
 
 Download the pre-built unified binary package:
 
-- **Automatic builds**: Available as artifacts from [GitHub Actions](https://github.com/EduardoA3677/proxychains-windows/actions) 
+- **Automatic builds**: Available as artifacts from [GitHub Actions](../../actions) 
   - Click on the latest successful workflow run
-  - Download `proxychains-windows-unified.zip` from the Artifacts section
+  - Download `proxychains-windows-unified` from the Artifacts section
   - This package includes the x64 executable and both x86/x64 DLLs
 
-- **Official releases**: Check the [Release Page](https://github.com/EduardoA3677/proxychains-windows/releases) for stable versions
+- **Official releases**: Check the [Release Page](../../releases) for stable versions
 
 The unified package contains everything you need:
 - `proxychains.exe` (x64) - Single executable for all scenarios
