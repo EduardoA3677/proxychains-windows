@@ -20,18 +20,19 @@ Cygwin. It also uses [uthash](https://github.com/troydhanson/uthash)
 for some data structures and 
 [minhook](https://github.com/TsudaKageyu/minhook) for API hooking.
 
-Proxychains.exe is tested on Windows 10 x64 1909 (18363.418), Windows 7 
-x64 SP1, Windows XP x86 SP3 and Cygwin 64-bit 3.1.2. Target OS should 
-have [Visual C++ Redistributable for Visual Studio 2015](https://www.microsoft.com/en-us/download/details.aspx?id=48145) 
+Proxychains.exe is tested on Windows 11, Windows 10 x64 1909 (18363.418), 
+Windows 7 x64 SP1, Windows XP x86 SP3 and Cygwin 64-bit 3.1.2. Target OS 
+should have [Visual C++ Redistributable for Visual Studio 2015](https://www.microsoft.com/en-us/download/details.aspx?id=48145) 
 installed.
 
 **WARNING: ANONYMITY IS NOT GUARANTEED!**
 
-WARNING: this program works only on dynamically linked programs. Also 
-both proxychains.exe and the program to call must be the same platform 
-and architecture (use proxychains_x86.exe to call x86 program, 
-proxychains_x64.exe to call x64 program; use Cygwin builds to call 
-Cygwin program).
+WARNING: this program works only on dynamically linked programs. 
+
+**Architecture Compatibility:** The x64 build of proxychains.exe can 
+automatically detect and inject into both x64 and x86 (32-bit) processes on 
+64-bit Windows systems. For Cygwin programs, use the Cygwin build. For best 
+compatibility, use the x64 build which includes support for both architectures.
 
 WARNING: this program is based on hacks and is at its early development 
 stage. Any unexpected situation may happen during usage. The called 
@@ -80,10 +81,28 @@ w32api-headers, w32api-runtime etc). Run bash, switch to `cygwin_build`
 
 # Install
 
-Copy `proxychains*.exe`, `[cyg/msys-]proxychains_hook*.dll`  to some 
-directory included in your `PATH` environment variable. You can rename 
-the main executable (like `proxychains_win32_x64.exe`) to names you 
-favor, like `proxychains.exe`.
+## Unified Binary (Recommended)
+
+For Win32 builds, use the x64 version of `proxychains.exe` along with **both** 
+the x64 and x86 hook DLLs (`proxychains_hook_x64.dll` and 
+`proxychains_hook_x86.dll`). This single executable will automatically detect 
+the target process architecture and inject the appropriate DLL.
+
+Copy the following files to a directory in your `PATH`:
+- `proxychains.exe` (x64 build)
+- `proxychains_hook_x64.dll`
+- `proxychains_hook_x86.dll`
+- `MinHook.x64.dll` (if using dynamic MinHook)
+- `MinHook.x86.dll` (if using dynamic MinHook)
+
+The x64 build will handle both 64-bit and 32-bit target processes automatically.
+
+## Cygwin/MSYS2 Build
+
+For Cygwin/MSYS2, copy `[cyg/msys-]proxychains*.exe` and 
+`[cyg/msys-]proxychains_hook*.dll` to a directory in your `PATH`.
+
+## Configuration File
 
 Last you need to create the needed configuration file in correct place. 
 See "Configuration".

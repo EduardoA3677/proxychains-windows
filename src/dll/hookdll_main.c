@@ -653,11 +653,21 @@ DWORD InjectTargetProcess(const PROCESS_INFORMATION* pPi, DWORD dwCreationFlags)
 	CopyMemory(pRemoteData->chDebugOutputStepData, g_pRemoteData ? g_pRemoteData->chDebugOutputStepData : "A\0B\0C\0D\0E\0F\0G\0H\0I\0J\0K\0L\0M\0N\0O\0P\0Q\0R\0S\0T\0", sizeof(pRemoteData->chDebugOutputStepData));
 	StringCchCopyW(pRemoteData->szCygwin1ModuleName, _countof(pRemoteData->szCygwin1ModuleName), g_pRemoteData ? g_pRemoteData->szCygwin1ModuleName : L"cygwin1.dll");
 	StringCchCopyW(pRemoteData->szMsys2ModuleName, _countof(pRemoteData->szMsys2ModuleName), g_pRemoteData ? g_pRemoteData->szMsys2ModuleName : L"msys-2.0.dll");
-	StringCchCopyW(pRemoteData->szHookDllModuleName, _countof(pRemoteData->szHookDllModuleName), g_pRemoteData ? g_pRemoteData->szHookDllModuleName : g_szHookDllFileName);
+	StringCchCopyW(pRemoteData->szHookDllModuleName, _countof(pRemoteData->szHookDllModuleName), g_pRemoteData ? g_pRemoteData->szHookDllModuleName : (bIsX86 ? g_szHookDllFileNameX86 : g_szHookDllFileNameX64));
 	pRemoteData->dwEverExecuted = 0;
 	pRemoteData->dwSize = sizeof(PXCH_INJECT_REMOTE_DATA) + dwExtraSize;
 
-	IPCLOGD(L"%ls", pRemoteData->pxchConfig.szHookDllPath);
+	// Override the DLL paths based on target architecture
+	// This allows a single x64 proxychains.exe to inject both x86 and x64 DLLs
+	if (bIsX86) {
+		StringCchCopyW(pRemoteData->pxchConfig.szHookDllPath, PXCH_MAX_DLL_PATH_BUFSIZE, pRemoteData->pxchConfig.szHookDllPathX86);
+		StringCchCopyW(pRemoteData->pxchConfig.szMinHookDllPath, PXCH_MAX_DLL_PATH_BUFSIZE, pRemoteData->pxchConfig.szMinHookDllPathX86);
+	} else {
+		StringCchCopyW(pRemoteData->pxchConfig.szHookDllPath, PXCH_MAX_DLL_PATH_BUFSIZE, pRemoteData->pxchConfig.szHookDllPathX64);
+		StringCchCopyW(pRemoteData->pxchConfig.szMinHookDllPath, PXCH_MAX_DLL_PATH_BUFSIZE, pRemoteData->pxchConfig.szMinHookDllPathX64);
+	}
+
+	IPCLOGD(L"Target arch: %ls, using DLL: %ls", bIsX86 ? L"x86" : L"x64", pRemoteData->pxchConfig.szHookDllPath);
 
 	IPCLOGV(L"CreateProcessW: After StringCchCopy. " WPRDW, 0);
 

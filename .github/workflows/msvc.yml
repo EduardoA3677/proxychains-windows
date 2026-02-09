@@ -13,9 +13,13 @@ jobs:
       run: |
         git submodule update --init --recursive --remote
       shell: cmd
-    - name: build
+    - name: build x64
       run: |
         "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\IDE\devenv.com" %GITHUB_WORKSPACE%\proxychains.exe.sln /build "Release^|x64"
+      shell: cmd
+    - name: build x86
+      run: |
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\IDE\devenv.com" %GITHUB_WORKSPACE%\proxychains.exe.sln /build "Release^|x86"
       shell: cmd
       
 

@@ -626,8 +626,14 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 	if (FAILED(StringCchCatA(szHelperX86CommandLine, PXCH_MAX_HELPER_PATH_BUFSIZE, PXCH_HELPER_X86_COMMANDLINE_SUFFIX))) goto err_insuf_buf;
 
 #if defined(_M_X64) || defined(__x86_64__)
+	// x64 build: Check both x64 and x86 DLLs exist for cross-architecture injection
 	if (!PathFileExistsW(pPxchConfig->szHookDllPathX64)) goto err_dll_not_exist;
+	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) {
+		LOGW(L"Warning: x86 DLL not found. Will not be able to inject into 32-bit processes.");
+		LOGW(L"Expected path: %ls", pPxchConfig->szHookDllPathX86);
+	}
 #else
+	// x86 build: Only check x86 DLL (cannot inject into x64 processes anyway)
 	if (!PathFileExistsW(pPxchConfig->szHookDllPathX86)) goto err_dll_not_exist;
 #endif
 	if (!PathFileExistsW(pPxchConfig->szMinHookDllPathX64)) StringCchCopyW(pPxchConfig->szMinHookDllPathX64, PXCH_MAX_DLL_PATH_BUFSIZE, g_szMinHookDllFileNameX64);
