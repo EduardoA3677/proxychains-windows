@@ -160,6 +160,11 @@ typedef PXCH_UINT32 PXCH_UINT_MACHINE;
 #define PXCH_CHAIN_TYPE_RANDOM   0x00000003
 #define PXCH_CHAIN_TYPE_ROUND_ROBIN 0x00000004
 
+#define PXCH_PROCESS_FILTER_NONE      0x00000000
+#define PXCH_PROCESS_FILTER_WHITELIST  0x00000001
+#define PXCH_PROCESS_FILTER_BLACKLIST  0x00000002
+#define PXCH_MAX_PROCESS_FILTER_NUM    8
+
 
 #define PXCH_RULE_TYPE_DOMAIN_KEYWORD   0x00000001
 #define PXCH_RULE_TYPE_DOMAIN_SUFFIX    0x00000002
@@ -450,6 +455,14 @@ typedef struct _PROXYCHAINS_CONFIG {
 	PXCH_UINT32 dwChainLen;
 	PXCH_UINT32 dwRandomSeed;
 	PXCH_UINT32 dwRandomSeedSet;
+
+	// Process name filtering: whitelist (process_only) or blacklist (process_except)
+	// When dwProcessFilterMode == 1 (whitelist): only inject into matching process names
+	// When dwProcessFilterMode == 2 (blacklist): inject into all except matching process names
+	// When dwProcessFilterMode == 0: no filtering (inject into all child processes)
+	PXCH_UINT32 dwProcessFilterMode;
+	PXCH_UINT32 dwProcessFilterCount;
+	wchar_t szProcessFilterNames[8][PXCH_MAX_HOSTNAME_BUFSIZE];
 } PROXYCHAINS_CONFIG;
 #pragma pack(pop)
 

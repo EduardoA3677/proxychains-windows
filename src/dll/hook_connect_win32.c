@@ -1223,7 +1223,10 @@ static int TunnelThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PXCH_CHAIN*
 		FUNCIPCLOGD(L"Random chain: successfully tunneled through %lu proxies", (unsigned long)dwCount);
 		return 0;
 	} else if (dwChainType == PXCH_CHAIN_TYPE_ROUND_ROBIN) {
-		static volatile LONG lRoundRobinCounter = 0;
+		// Use a named shared memory region for cross-process persistent rotation state
+		static HANDLE hRoundRobinMapping = NULL;
+		static volatile LONG* plRoundRobinCounter = NULL;
+		static volatile LONG lRoundRobinCounterFallback = 0;
 		PXCH_UINT32 dwChainLen = g_pPxchConfig->dwChainLen;
 		PXCH_UINT32 dwStartIndex;
 		PXCH_UINT32 dwCount = 0;
@@ -1232,7 +1235,21 @@ static int TunnelThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PXCH_CHAIN*
 			dwChainLen = dwProxyNum;
 		}
 
-		dwStartIndex = (PXCH_UINT32)(InterlockedIncrement(&lRoundRobinCounter) - 1) % dwProxyNum;
+		// Lazily initialize shared memory for persistent round-robin counter
+		if (plRoundRobinCounter == NULL) {
+			wchar_t szMappingName[128];
+			StringCchPrintfW(szMappingName, _countof(szMappingName), L"Local\\proxychains_rr_%lu", (unsigned long)g_pPxchConfig->dwMasterProcessId);
+			hRoundRobinMapping = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(LONG), szMappingName);
+			if (hRoundRobinMapping) {
+				plRoundRobinCounter = (volatile LONG*)MapViewOfFile(hRoundRobinMapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(LONG));
+			}
+			if (!plRoundRobinCounter) {
+				FUNCIPCLOGW(L"Round-robin: shared memory failed, using process-local counter");
+				plRoundRobinCounter = &lRoundRobinCounterFallback;
+			}
+		}
+
+		dwStartIndex = (PXCH_UINT32)(InterlockedIncrement(plRoundRobinCounter) - 1) % dwProxyNum;
 
 		FUNCIPCLOGD(L"Using round-robin chain mode (chain_len=%lu, start=%lu)", (unsigned long)dwChainLen, (unsigned long)dwStartIndex);
 

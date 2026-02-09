@@ -845,6 +845,24 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 				pszParseErrorMessage = L"Invalid default target";
 				goto err_invalid_config_with_msg;
 			}
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"process_only") || WSTR_EQUAL(sOption, sOptionNameEnd, L"process_except")) {
+			const WCHAR* pNameStart;
+			const WCHAR* pNameEnd;
+			PXCH_UINT32 dwMode = WSTR_EQUAL(sOption, sOptionNameEnd, L"process_only") ? PXCH_PROCESS_FILTER_WHITELIST : PXCH_PROCESS_FILTER_BLACKLIST;
+
+			if (pTempPxchConfig->dwProcessFilterMode != PXCH_PROCESS_FILTER_NONE && pTempPxchConfig->dwProcessFilterMode != dwMode) {
+				pszParseErrorMessage = L"Cannot mix process_only and process_except directives";
+				goto err_invalid_config_with_msg;
+			}
+			pTempPxchConfig->dwProcessFilterMode = dwMode;
+
+			if (OptionGetStringValueAfterOptionName(&pNameStart, &pNameEnd, sOptionNameEnd, NULL) == -1) goto err_invalid_config_with_msg;
+			if (pTempPxchConfig->dwProcessFilterCount >= PXCH_MAX_PROCESS_FILTER_NUM) {
+				pszParseErrorMessage = L"Too many process filter entries (max 8)";
+				goto err_invalid_config_with_msg;
+			}
+			if (FAILED(StringCchCopyNW(pTempPxchConfig->szProcessFilterNames[pTempPxchConfig->dwProcessFilterCount], PXCH_MAX_HOSTNAME_BUFSIZE, pNameStart, pNameEnd - pNameStart))) goto err_insuf_buf;
+			pTempPxchConfig->dwProcessFilterCount++;
 		} else {
 			LOGE(L"Config line %llu: Unknown option: %.*ls", ullLineNum, sOptionNameEnd - sOption, sOption);
 			goto err_invalid_config;
