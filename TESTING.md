@@ -186,6 +186,57 @@ Both the parent (cmd.exe) and child (curl.exe) should be proxied.
 2. Test that resolving `myhost.example.com` (lowercase) matches the entry
 3. Verify the connection is handled correctly
 
+### Test 13: Random Seed Configuration
+
+1. Configure `proxychains.conf`:
+   ```
+   random_chain
+   chain_len = 1
+   random_seed = 42
+   ```
+2. Add multiple working proxies in `[ProxyList]`
+3. Test multiple times:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. With the same seed, the proxy selection order should be deterministic
+5. Remove the `random_seed` line and verify behavior returns to time-based randomness
+
+### Test 14: Environment Variable Expansion
+
+1. Set an environment variable with a hosts file path:
+   ```cmd
+   set CUSTOM_HOSTS=%USERPROFILE%\my_hosts
+   ```
+2. Configure `proxychains.conf`:
+   ```
+   custom_hosts_file_path %USERPROFILE%\my_hosts
+   ```
+3. Create the hosts file at the expanded path
+4. Verify the hosts file is loaded correctly
+5. Also test with the `-f` flag:
+   ```cmd
+   proxychains.exe -f %APPDATA%\proxychains.conf curl.exe https://ifconfig.me
+   ```
+
+### Test 15: Timeout Diagnostics
+
+1. Configure `proxychains.conf` with a non-existent proxy:
+   ```
+   [ProxyList]
+   socks5 192.0.2.1 1080
+   ```
+2. Set a short timeout:
+   ```
+   tcp_connect_time_out 2000
+   ```
+3. Test:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. Verify the error message shows the timeout value and target address
+
 ## Windows 11 Specific Testing
 
 ### Test on Windows 11

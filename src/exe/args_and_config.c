@@ -67,6 +67,18 @@
 
 static const WCHAR* pszParseErrorMessage;
 
+// Expand environment variables in a wide string path (e.g. %USERPROFILE%\file)
+// Returns TRUE if expansion was performed, FALSE if no change or error
+static BOOL ExpandEnvironmentPath(WCHAR* szDest, size_t cchDest, const WCHAR* szSrc)
+{
+	DWORD dwResult = ExpandEnvironmentStringsW(szSrc, szDest, (DWORD)cchDest);
+	if (dwResult == 0 || dwResult > (DWORD)cchDest) {
+		StringCchCopyW(szDest, cchDest, szSrc);
+		return FALSE;
+	}
+	return TRUE;
+}
+
 // impl: stdlib_config_reader.c
 PXCH_UINT32 OpenConfigurationFile(PROXYCHAINS_CONFIG* pPxchConfig);
 PXCH_UINT32 OpenHostsFile(const WCHAR* szHostsFilePath);
@@ -673,6 +685,8 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 
 	pPxchConfig->dwChainType = PXCH_CHAIN_TYPE_STRICT;
 	pPxchConfig->dwChainLen = 1;
+	pPxchConfig->dwRandomSeed = 0;
+	pPxchConfig->dwRandomSeedSet = 0;
 
 	// Parse configuration file
 
@@ -712,6 +726,10 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"chain_len")) {
 			if (OptionGetNumberValueAfterOptionName(&lValue, sOptionNameEnd, NULL, 1, PXCH_MAX_PROXY_NUM) == -1) goto err_invalid_config_with_msg;
 			pTempPxchConfig->dwChainLen = (PXCH_UINT32)lValue;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"random_seed")) {
+			if (OptionGetNumberValueAfterOptionName(&lValue, sOptionNameEnd, NULL, 0, 2147483647) == -1) goto err_invalid_config_with_msg;
+			pTempPxchConfig->dwRandomSeed = (PXCH_UINT32)lValue;
+			pTempPxchConfig->dwRandomSeedSet = 1;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"quiet_mode")) {
 			if (!pTempPxchConfig->dwLogLevelSetByArg) {
 				LOGD(L"Queit mode enabled in configuration file");
@@ -809,8 +827,10 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"custom_hosts_file_path")) {
 			const WCHAR* pPathStart;
 			const WCHAR* pPathEnd;
+			WCHAR szTempPath[PXCH_MAX_HOSTS_FILE_PATH_BUFSIZE];
 			if (OptionGetStringValueAfterOptionName(&pPathStart, &pPathEnd, sOptionNameEnd, NULL) == -1) goto err_invalid_config_with_msg;
-			if (FAILED(StringCchCopyNW(pPxchConfig->szHostsFilePath, _countof(pPxchConfig->szHostsFilePath), pPathStart, pPathEnd - pPathStart))) goto err_insuf_buf;
+			if (FAILED(StringCchCopyNW(szTempPath, _countof(szTempPath), pPathStart, pPathEnd - pPathStart))) goto err_insuf_buf;
+			ExpandEnvironmentPath(pPxchConfig->szHostsFilePath, _countof(pPxchConfig->szHostsFilePath), szTempPath);
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"default_target")) {
 			const WCHAR* pTargetStart;
 			const WCHAR* pTargetEnd;
@@ -1421,7 +1441,9 @@ DWORD ParseArgs(PROXYCHAINS_CONFIG* pConfig, int argc, WCHAR* argv[], int* piCom
 
 		option_value_following:
 			if (bOptionFile) {
-				if (FAILED(StringCchCopyW(pConfig->szConfigPath, _countof(pConfig->szConfigPath), pWchar))) goto err_insuf_buf;
+				WCHAR szTempConfigPath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+				if (FAILED(StringCchCopyW(szTempConfigPath, _countof(szTempConfigPath), pWchar))) goto err_insuf_buf;
+				ExpandEnvironmentPath(pConfig->szConfigPath, _countof(pConfig->szConfigPath), szTempConfigPath);
 				bOptionFile = FALSE;
 				continue;
 			}

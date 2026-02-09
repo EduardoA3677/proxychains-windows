@@ -421,7 +421,7 @@ err_select:
 	goto err_return;
 
 err_timeout:
-	FUNCIPCLOGW(L"select() timeout");
+	FUNCIPCLOGW(L"Proxy connection timeout (%lu ms) connecting to %ls", (unsigned long)g_pPxchConfig->dwProxyConnectionTimeoutMillisecond, FormatHostPortToStr(pAddr, iAddrLen));
 	iWSALastError = WSAETIMEDOUT;
 	dwLastError = ERROR_TIMEOUT;
 	goto err_return;
@@ -560,7 +560,7 @@ err_select_unexpected:
 	goto err_return;
 
 err_timeout:
-	FUNCIPCLOGW(L"select() timeout");
+	FUNCIPCLOGW(L"Proxy handshake recv timeout (%lu ms)", (unsigned long)g_pPxchConfig->dwProxyConnectionTimeoutMillisecond);
 	iWSALastError = WSAETIMEDOUT;
 	dwLastError = ERROR_TIMEOUT;
 	goto err_return;
@@ -1146,7 +1146,11 @@ static int TunnelThroughProxyChain(void* pTempData, PXCH_UINT_PTR s, PXCH_CHAIN*
 		}
 
 		FUNCIPCLOGD(L"Using random chain mode (chain_len=%lu)", (unsigned long)dwChainLen);
-		srand((unsigned int)GetTickCount());
+		if (g_pPxchConfig->dwRandomSeedSet) {
+			srand((unsigned int)g_pPxchConfig->dwRandomSeed);
+		} else {
+			srand((unsigned int)GetTickCount());
+		}
 
 		while (dwCount < dwChainLen) {
 			dwAttempts = 0;

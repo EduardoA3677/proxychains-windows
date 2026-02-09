@@ -6,8 +6,8 @@
 - [x] Implement dynamic chain mode (skip dead proxies)
 - [ ] Add proxy health checking mechanism
 - [ ] Implement automatic proxy failover
-- [ ] Add timeout-based proxy detection
-- **Status**: Dynamic chain mode implemented (dead proxies are skipped during connection)
+- [x] Add timeout-based proxy detection
+- **Status**: Dynamic chain mode implemented (dead proxies are skipped during connection), improved timeout diagnostics
 - **Difficulty**: Medium
 - **Impact**: High - Better reliability when proxies fail
 
@@ -23,8 +23,8 @@
 ### Random Chain Support
 - [x] Implement random proxy selection
 - [x] Configurable chain length
-- [ ] Random seed configuration
-- **Status**: Random chain mode implemented with configurable chain_len
+- [x] Random seed configuration
+- **Status**: Random chain mode implemented with configurable chain_len and optional random_seed
 - **Difficulty**: Low
 - **Impact**: Low - Useful for testing
 
@@ -42,9 +42,9 @@
 - [x] Support for HTTP/HTTPS proxy (HTTP CONNECT method)
 - [x] Support for SOCKS4/SOCKS4a proxies
 - [ ] Multiple configuration file profiles
-- [ ] Environment variable expansion in config
+- [x] Environment variable expansion in config
 - [ ] Reload configuration without restart
-- **Status**: SOCKS5, SOCKS4/SOCKS4a, and HTTP CONNECT proxies supported
+- **Status**: SOCKS5, SOCKS4/SOCKS4a, and HTTP CONNECT proxies supported; environment variables expanded in file paths
 - **Difficulty**: Medium
 - **Impact**: Medium - More flexibility
 

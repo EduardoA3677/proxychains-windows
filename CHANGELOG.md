@@ -7,16 +7,19 @@ All notable changes to proxychains-windows will be documented in this file.
 ### Added
 - **Dynamic Chain Support**: New `dynamic_chain` mode that skips dead/unreachable proxies and continues with alive ones. At least one proxy must be online for the chain to work.
 - **Random Chain Support**: New `random_chain` mode that randomly selects proxies from the list. Configurable `chain_len` parameter controls how many proxies are used per connection.
+- **Random Seed Configuration**: New `random_seed` option for reproducible random chain proxy selection. When set, random proxy selection uses the specified seed instead of time-based seeding.
 - **Round-Robin Chain Support**: New `round_robin_chain` mode that cycles through proxies sequentially with thread-safe rotation using `InterlockedIncrement`. Configurable `chain_len` parameter.
 - **Chain Type Configuration**: Four chain modes now supported: `strict_chain` (default, all proxies must be online), `dynamic_chain` (skip dead proxies), `random_chain` (random proxy selection), and `round_robin_chain` (sequential rotation).
 - **SOCKS4/SOCKS4a Proxy Support**: New `socks4` proxy type supporting both SOCKS4 (IPv4 only) and SOCKS4a (hostname resolution on proxy server). Optional userid for ident-based authentication.
 - **HTTP CONNECT Proxy Support**: New `http` proxy type using HTTP CONNECT method for tunneling. Supports Basic authentication with username/password.
+- **Environment Variable Expansion**: File paths in configuration (such as `custom_hosts_file_path` and `-f` flag) now support `%VARIABLE%` environment variable expansion.
+- **Improved Timeout Diagnostics**: Proxy connection and handshake timeout error messages now include the timeout value and target address for better troubleshooting.
 - **Unified Binary Support**: x64 build now automatically detects and injects into both x64 and x86 (32-bit) processes
 - **Automatic Architecture Detection**: Uses `IsWow64Process()` to determine target process architecture
 - **Smart DLL Selection**: Automatically selects correct hook DLL (x86 or x64) based on target process
 - **Improved Error Messages**: Better diagnostics showing exact paths of missing DLLs
 - **Windows 11 Compatibility**: Full support and testing for Windows 11
-- **Enhanced Documentation**: 
+- **Enhanced Documentation**:
   - New "Key Features and Improvements" section in README
   - Updated Install section with unified binary instructions
   - New TESTING.md guide for testing cross-architecture support

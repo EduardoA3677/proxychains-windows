@@ -448,6 +448,8 @@ typedef struct _PROXYCHAINS_CONFIG {
 
 	PXCH_UINT32 dwChainType;
 	PXCH_UINT32 dwChainLen;
+	PXCH_UINT32 dwRandomSeed;
+	PXCH_UINT32 dwRandomSeedSet;
 } PROXYCHAINS_CONFIG;
 #pragma pack(pop)
 
