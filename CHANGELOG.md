@@ -2,6 +2,20 @@
 
 All notable changes to proxychains-windows will be documented in this file.
 
+## [Unreleased] - Bug Fixes and Improvements
+
+### Fixed
+- **Case-Insensitive DNS Resolution**: Hostname comparison in hosts file now case-insensitive
+  - DNS protocol is case-insensitive per RFC
+  - Changed `StrCmpW` to `StrCmpIW` in hostname resolution
+  - Fixes issues with mixed-case domain names
+
+### Added
+- **Environment Variable Expansion Support**: Utility function for expanding environment variables
+  - Supports both %VAR% (Windows) and ${VAR} (Unix) syntax
+  - Can be used in configuration parsing
+  - Foundation for future config enhancements
+
 ## [Unreleased] - SOCKS4/SOCKS4a Proxy Support
 
 ### Added

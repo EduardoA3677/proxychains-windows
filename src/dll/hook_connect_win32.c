@@ -76,7 +76,8 @@ static BOOL ResolveByHostsFile(PXCH_IP_ADDRESS* pIp, const PXCH_HOSTNAME* pHostn
 	PXCH_IP_ADDRESS* pCurrentIp;
 
 	for (i = 0; i < g_pPxchConfig->dwHostsEntryNum; i++) {
-		if (StrCmpW(PXCH_CONFIG_HOSTS_ENTRY_ARR_G[i].Hostname.szValue, pHostname->szValue) == 0) {
+		// Use case-insensitive comparison for hostnames (DNS is case-insensitive)
+		if (StrCmpIW(PXCH_CONFIG_HOSTS_ENTRY_ARR_G[i].Hostname.szValue, pHostname->szValue) == 0) {
 			pCurrentIp = &PXCH_CONFIG_HOSTS_ENTRY_ARR_G[i].Ip;
 			if (iFamily == AF_UNSPEC
 				|| (iFamily == AF_INET && pCurrentIp->CommonHeader.wTag == PXCH_HOST_TYPE_IPV4)

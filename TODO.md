@@ -122,12 +122,12 @@
 ## Bug Fixes & Improvements
 
 ### Known Issues
-- [ ] Domain name resolution should be case-insensitive
+- [x] Domain name resolution should be case-insensitive
 - [ ] Handle "fork-and-exit" child processes properly
 - [ ] Powershell wget compatibility issues
 - [ ] Better ConEmu compatibility (currently incompatible)
 - [ ] Handle Cygwin encoding issues completely
-- **Status**: Some documented in README To-do section
+- **Status**: Domain name case-insensitive fix implemented
 - **Difficulty**: Various
 - **Impact**: Various
 

@@ -139,6 +139,96 @@ static inline WCHAR* ConsumeStringInSet(WCHAR* pStart, WCHAR* pEndOptional, cons
 	return p;
 }
 
+// Expand environment variables in a string
+// Supports both %VAR% (Windows) and ${VAR} (Unix) syntax
+static DWORD ExpandEnvironmentVariablesInString(WCHAR* szDest, size_t cchDest, const WCHAR* szSrc)
+{
+	size_t i, j;
+	WCHAR szVarName[256];
+	WCHAR szVarValue[1024];
+	DWORD dwVarLen;
+	const WCHAR* p;
+	BOOL bInVar = FALSE;
+	BOOL bUnixStyle = FALSE;
+	size_t iVarStart = 0;
+	size_t iVarNameLen = 0;
+
+	if (!szSrc || !szDest || cchDest == 0) {
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	j = 0;
+	for (i = 0; szSrc[i] && j < cchDest - 1; i++) {
+		if (!bInVar) {
+			// Check for start of environment variable
+			if (szSrc[i] == L'%') {
+				// Windows style %VAR%
+				bInVar = TRUE;
+				bUnixStyle = FALSE;
+				iVarStart = i + 1;
+				iVarNameLen = 0;
+			} else if (szSrc[i] == L'$' && szSrc[i + 1] == L'{') {
+				// Unix style ${VAR}
+				bInVar = TRUE;
+				bUnixStyle = TRUE;
+				iVarStart = i + 2;
+				i++; // Skip the '{'
+				iVarNameLen = 0;
+			} else {
+				szDest[j++] = szSrc[i];
+			}
+		} else {
+			// Inside a variable
+			if ((bUnixStyle && szSrc[i] == L'}') || (!bUnixStyle && szSrc[i] == L'%')) {
+				// End of variable, expand it
+				if (iVarNameLen > 0 && iVarNameLen < _countof(szVarName)) {
+					wcsncpy_s(szVarName, _countof(szVarName), &szSrc[iVarStart], iVarNameLen);
+					szVarName[iVarNameLen] = L'\0';
+
+					dwVarLen = GetEnvironmentVariableW(szVarName, szVarValue, _countof(szVarValue));
+					if (dwVarLen > 0 && dwVarLen < _countof(szVarValue)) {
+						// Successfully got environment variable
+						for (p = szVarValue; *p && j < cchDest - 1; p++) {
+							szDest[j++] = *p;
+						}
+					} else {
+						// Variable not found or too long, keep original
+						if (!bUnixStyle) szDest[j++] = L'%';
+						else {
+							szDest[j++] = L'$';
+							szDest[j++] = L'{';
+						}
+						for (size_t k = 0; k < iVarNameLen && j < cchDest - 1; k++) {
+							szDest[j++] = szSrc[iVarStart + k];
+						}
+						if (j < cchDest - 1) {
+							szDest[j++] = bUnixStyle ? L'}' : L'%';
+						}
+					}
+				}
+				bInVar = FALSE;
+			} else {
+				iVarNameLen++;
+			}
+		}
+	}
+
+	// Handle unterminated variable
+	if (bInVar) {
+		if (!bUnixStyle) szDest[j++] = L'%';
+		else {
+			szDest[j++] = L'$';
+			szDest[j++] = L'{';
+		}
+		for (size_t k = 0; k < iVarNameLen && j < cchDest - 1; k++) {
+			szDest[j++] = szSrc[iVarStart + k];
+		}
+	}
+
+	szDest[j] = L'\0';
+	return NO_ERROR;
+}
+
 static int StringToAddress(LPWSTR AddressString, LPSOCKADDR lpAddress, int iAddressLength)
 {
 	int iAddressLength2;
