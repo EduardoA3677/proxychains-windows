@@ -31,6 +31,7 @@ All notable changes to proxychains-windows will be documented in this file.
 - **CI/CD Improvements**: GitHub Actions workflow now builds both x86 and x64 versions
 - **Process Name Filtering**: New `process_only` (whitelist) and `process_except` (blacklist) config directives to control which child processes get injected. Case-insensitive matching on executable filename. Maximum 8 filter entries.
 - **Persistent Round-Robin State**: Round-robin chain mode counter is now stored in named shared memory (`Local\proxychains_rr_<pid>`) for consistent rotation across child processes.
+- **WinHTTP/WinINet API Hooks**: Hook `WinHttpOpen` and `WinHttpSetOption` (winhttp.dll) and `InternetOpenA/W` and `InternetSetOptionA/W` (wininet.dll) to force proxy settings on applications using high-level HTTP APIs (PowerShell Invoke-WebRequest, .NET HttpClient, browsers, Windows Update, etc.).
 
 ### Changed
 - **DLL Path Handling**: Hook DLL paths are now dynamically selected at injection time based on target architecture

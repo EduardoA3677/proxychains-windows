@@ -273,4 +273,75 @@ PXCH_DLL_API int Ws2_32_DirectConnect(void* pTempData, PXCH_UINT_PTR s, const PX
 PXCH_DLL_API int Ws2_32_Socks5Connect(void* pTempData, PXCH_UINT_PTR s, const PXCH_PROXY_DATA* pProxy /* Mostly myself */, const PXCH_HOST_PORT* pHostPort, int iAddrLen);
 PXCH_DLL_API int Ws2_32_Socks5Handshake(void* pTempData, PXCH_UINT_PTR s, const PXCH_PROXY_DATA* pProxy /* Mostly myself */);
 
+
+// ============================================================================
+// WinHTTP API Hook Signatures (winhttp.dll)
+// ============================================================================
+
+// HINTERNET = void*
+#define WinHttp_Open_SIGN(inside_identifier) void* (WINAPI inside_identifier)(\
+	const wchar_t* pszAgentW,\
+	DWORD dwAccessType,\
+	const wchar_t* pszProxyName,\
+	const wchar_t* pszProxyBypass,\
+	DWORD dwFlags)
+
+#define WinHttp_SetOption_SIGN(inside_identifier) BOOL (WINAPI inside_identifier)(\
+	void* hInternet,\
+	DWORD dwOption,\
+	void* lpBuffer,\
+	DWORD dwBufferLength)
+
+extern FP_ORIGINAL_FUNC2(WinHttp, Open);
+DECLARE_HOOK_FUNC2(WinHttp, Open);
+
+extern FP_ORIGINAL_FUNC2(WinHttp, SetOption);
+DECLARE_HOOK_FUNC2(WinHttp, SetOption);
+
+
+// ============================================================================
+// WinINet API Hook Signatures (wininet.dll)
+// ============================================================================
+
+#define WinINet_InternetOpenA_SIGN(inside_identifier) void* (WINAPI inside_identifier)(\
+	const char* lpszAgent,\
+	DWORD dwAccessType,\
+	const char* lpszProxy,\
+	const char* lpszProxyBypass,\
+	DWORD dwFlags)
+
+#define WinINet_InternetOpenW_SIGN(inside_identifier) void* (WINAPI inside_identifier)(\
+	const wchar_t* lpszAgent,\
+	DWORD dwAccessType,\
+	const wchar_t* lpszProxy,\
+	const wchar_t* lpszProxyBypass,\
+	DWORD dwFlags)
+
+#define WinINet_InternetSetOptionA_SIGN(inside_identifier) BOOL (WINAPI inside_identifier)(\
+	void* hInternet,\
+	DWORD dwOption,\
+	void* lpBuffer,\
+	DWORD dwBufferLength)
+
+#define WinINet_InternetSetOptionW_SIGN(inside_identifier) BOOL (WINAPI inside_identifier)(\
+	void* hInternet,\
+	DWORD dwOption,\
+	void* lpBuffer,\
+	DWORD dwBufferLength)
+
+extern FP_ORIGINAL_FUNC2(WinINet, InternetOpenA);
+DECLARE_HOOK_FUNC2(WinINet, InternetOpenA);
+
+extern FP_ORIGINAL_FUNC2(WinINet, InternetOpenW);
+DECLARE_HOOK_FUNC2(WinINet, InternetOpenW);
+
+extern FP_ORIGINAL_FUNC2(WinINet, InternetSetOptionA);
+DECLARE_HOOK_FUNC2(WinINet, InternetSetOptionA);
+
+extern FP_ORIGINAL_FUNC2(WinINet, InternetSetOptionW);
+DECLARE_HOOK_FUNC2(WinINet, InternetSetOptionW);
+
+
+void Win32HookWinHttp(void);
+
 extern UT_array* g_arrHeapAllocatedPointers;

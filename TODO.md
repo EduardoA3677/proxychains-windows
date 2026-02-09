@@ -36,6 +36,16 @@
 - **Difficulty**: High
 - **Impact**: High - Prevent DNS leaks better
 
+### Hook WinHTTP/WinINet APIs
+- [x] Hook WinHttpOpen to force proxy settings on WinHTTP sessions
+- [x] Hook WinHttpSetOption to intercept proxy configuration changes
+- [x] Hook InternetOpenA/W to force proxy settings on WinINet sessions
+- [x] Hook InternetSetOptionA/W to intercept proxy configuration changes
+- [x] Child data backup/restore for all WinHTTP/WinINet hook function pointers
+- **Status**: Implemented. Hooks intercept WinHTTP (winhttp.dll) and WinINet (wininet.dll) session creation to inject the configured proxy. Applications using these APIs (PowerShell Invoke-WebRequest, browsers, .NET HttpClient, etc.) are now transparently proxied.
+- **Difficulty**: Medium
+- **Impact**: High - Many Windows applications use WinHTTP/WinINet instead of raw Winsock
+
 ## Medium Priority Features
 
 ### Configuration Improvements

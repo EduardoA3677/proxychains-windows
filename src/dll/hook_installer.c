@@ -132,6 +132,52 @@ void Win32HookWs2_32(void)
 	}
 }
 
+void Win32HookWinHttp(void)
+{
+	HMODULE hWinHttp;
+	HMODULE hWinINet;
+	LPVOID pWinHttp_Open = NULL;
+	LPVOID pWinHttp_SetOption = NULL;
+	LPVOID pWinINet_InternetOpenA = NULL;
+	LPVOID pWinINet_InternetOpenW = NULL;
+	LPVOID pWinINet_InternetSetOptionA = NULL;
+	LPVOID pWinINet_InternetSetOptionW = NULL;
+
+	// Hook WinHTTP (winhttp.dll)
+	LoadLibraryW(L"winhttp.dll");
+
+	if ((hWinHttp = GetModuleHandleW(L"winhttp.dll"))) {
+		orig_fpWinHttp_Open = (void*)GetProcAddress(hWinHttp, "WinHttpOpen");
+		orig_fpWinHttp_SetOption = (void*)GetProcAddress(hWinHttp, "WinHttpSetOption");
+
+		pWinHttp_Open = orig_fpWinHttp_Open;
+		pWinHttp_SetOption = orig_fpWinHttp_SetOption;
+
+		CREATE_HOOK3_IFNOTNULL(WinHttp, Open, pWinHttp_Open);
+		CREATE_HOOK3_IFNOTNULL(WinHttp, SetOption, pWinHttp_SetOption);
+	}
+
+	// Hook WinINet (wininet.dll)
+	LoadLibraryW(L"wininet.dll");
+
+	if ((hWinINet = GetModuleHandleW(L"wininet.dll"))) {
+		orig_fpWinINet_InternetOpenA = (void*)GetProcAddress(hWinINet, "InternetOpenA");
+		orig_fpWinINet_InternetOpenW = (void*)GetProcAddress(hWinINet, "InternetOpenW");
+		orig_fpWinINet_InternetSetOptionA = (void*)GetProcAddress(hWinINet, "InternetSetOptionA");
+		orig_fpWinINet_InternetSetOptionW = (void*)GetProcAddress(hWinINet, "InternetSetOptionW");
+
+		pWinINet_InternetOpenA = orig_fpWinINet_InternetOpenA;
+		pWinINet_InternetOpenW = orig_fpWinINet_InternetOpenW;
+		pWinINet_InternetSetOptionA = orig_fpWinINet_InternetSetOptionA;
+		pWinINet_InternetSetOptionW = orig_fpWinINet_InternetSetOptionW;
+
+		CREATE_HOOK3_IFNOTNULL(WinINet, InternetOpenA, pWinINet_InternetOpenA);
+		CREATE_HOOK3_IFNOTNULL(WinINet, InternetOpenW, pWinINet_InternetOpenW);
+		CREATE_HOOK3_IFNOTNULL(WinINet, InternetSetOptionA, pWinINet_InternetSetOptionA);
+		CREATE_HOOK3_IFNOTNULL(WinINet, InternetSetOptionW, pWinINet_InternetSetOptionW);
+	}
+}
+
 void CygwinHook(void)
 {
 	HMODULE hCygwin1;
