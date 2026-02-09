@@ -506,8 +506,8 @@ static const wchar_t g_szChildDataSavingFileMappingPrefix[] = L"Local\\proxychai
 #define PXCH_HELPER_OS_DESC "win32"
 #endif
 
-#define PXCH_HELPER_X64_COMMANDLINE_SUFFIX "proxychains_helper_" PXCH_HELPER_OS_DESC "_x64" PXCH_HOOKDLL_DEBUG_SUFFIX_NARROW ".exe --get-winapi-func-addr 2> " PXCH_REDIRECT_NULL_FILE
-#define PXCH_HELPER_X86_COMMANDLINE_SUFFIX "proxychains_helper_" PXCH_HELPER_OS_DESC "_x86" PXCH_HOOKDLL_DEBUG_SUFFIX_NARROW ".exe --get-winapi-func-addr 2> " PXCH_REDIRECT_NULL_FILE
+#define PXCH_HELPER_X64_COMMANDLINE_SUFFIX "proxychains_helper_" PXCH_HELPER_OS_DESC "_x64" PXCH_HOOKDLL_DEBUG_SUFFIX_NARROW ".exe\" --get-winapi-func-addr 2> " PXCH_REDIRECT_NULL_FILE
+#define PXCH_HELPER_X86_COMMANDLINE_SUFFIX "proxychains_helper_" PXCH_HELPER_OS_DESC "_x86" PXCH_HOOKDLL_DEBUG_SUFFIX_NARROW ".exe\" --get-winapi-func-addr 2> " PXCH_REDIRECT_NULL_FILE
 
 
 #if defined(_M_X64) || defined(__x86_64__)
