@@ -24,6 +24,7 @@
 #define PXCH_DO_NOT_INCLUDE_STD_HEADERS_NOW
 #define PXCH_DO_NOT_INCLUDE_STRSAFE_NOW
 #include "includes_win32.h"
+#include <winsock2.h>
 #include <strsafe.h>
 #include "hookdll_util_win32.h"
 #include "log_generic.h"
@@ -140,7 +141,7 @@ static BOOL BuildProxyStringA(char* szProxy, DWORD cchProxy)
 // WinHttpOpen: Intercept to force named proxy access type
 PROXY_FUNC2(WinHttp, Open)
 {
-	HINTERNET hSession;
+	void* hSession;
 	wchar_t szProxy[512];
 	BOOL bHasProxy;
 
@@ -187,7 +188,7 @@ PROXY_FUNC2(WinHttp, SetOption)
 // InternetOpenA: Intercept to force proxy access type
 PROXY_FUNC2(WinINet, InternetOpenA)
 {
-	HINTERNET hInternet;
+	void* hInternet;
 	char szProxy[512];
 	BOOL bHasProxy;
 
@@ -212,7 +213,7 @@ PROXY_FUNC2(WinINet, InternetOpenA)
 // InternetOpenW: Intercept to force proxy access type
 PROXY_FUNC2(WinINet, InternetOpenW)
 {
-	HINTERNET hInternet;
+	void* hInternet;
 	wchar_t szProxy[512];
 	BOOL bHasProxy;
 

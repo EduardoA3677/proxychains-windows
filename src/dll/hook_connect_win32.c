@@ -218,7 +218,6 @@ static int Socks5UdpAssociateDnsQuery(
 	struct sockaddr_in ProxyAddr;
 	struct sockaddr_in UdpRelayAddr;
 	struct sockaddr_in LocalAddr;
-	int iLocalAddrLen;
 	WSADATA WsaData;
 	char ServerBoundAddrType;
 	TIMEVAL Timeout = { 5, 0 };  // 5 second timeout for DNS
