@@ -2,19 +2,42 @@
 
 All notable changes to proxychains-windows will be documented in this file.
 
-## [Unreleased] - Cross-Architecture Support and Windows 11 Improvements
+## [Unreleased] - Dynamic Chain, Random Chain, and Cross-Architecture Support
 
 ### Added
+- **Dynamic Chain Support**: New `dynamic_chain` mode that skips dead/unreachable proxies and continues with alive ones. At least one proxy must be online for the chain to work.
+- **Random Chain Support**: New `random_chain` mode that randomly selects proxies from the list. Configurable `chain_len` parameter controls how many proxies are used per connection.
+- **Random Seed Configuration**: New `random_seed` option for reproducible random chain proxy selection. When set, random proxy selection uses the specified seed instead of time-based seeding.
+- **Round-Robin Chain Support**: New `round_robin_chain` mode that cycles through proxies sequentially with thread-safe rotation using `InterlockedIncrement`. Configurable `chain_len` parameter.
+- **Chain Type Configuration**: Four chain modes now supported: `strict_chain` (default, all proxies must be online), `dynamic_chain` (skip dead proxies), `random_chain` (random proxy selection), and `round_robin_chain` (sequential rotation).
+- **SOCKS4/SOCKS4a Proxy Support**: New `socks4` proxy type supporting both SOCKS4 (IPv4 only) and SOCKS4a (hostname resolution on proxy server). Optional userid for ident-based authentication.
+- **HTTP CONNECT Proxy Support**: New `http` proxy type using HTTP CONNECT method for tunneling. Supports Basic authentication with username/password.
+- **Proxy Health Checking**: Per-proxy failure counters using thread-safe `InterlockedIncrement`. Dynamic chain auto-skips proxies with ≥3 consecutive failures. All chain modes now track success/failure metrics.
+- **Automatic Proxy Failover**: Dynamic chain mode automatically skips dead proxies and resets health counters when all proxies fail, allowing retry on next connection.
+- **Environment Variable Expansion**: File paths in configuration (such as `custom_hosts_file_path` and `-f` flag) now support `%VARIABLE%` environment variable expansion.
+- **Improved Timeout Diagnostics**: Proxy connection and handshake timeout error messages now include the timeout value and target address for better troubleshooting.
 - **Unified Binary Support**: x64 build now automatically detects and injects into both x64 and x86 (32-bit) processes
 - **Automatic Architecture Detection**: Uses `IsWow64Process()` to determine target process architecture
 - **Smart DLL Selection**: Automatically selects correct hook DLL (x86 or x64) based on target process
 - **Improved Error Messages**: Better diagnostics showing exact paths of missing DLLs
 - **Windows 11 Compatibility**: Full support and testing for Windows 11
-- **Enhanced Documentation**: 
+- **API Hook Documentation**: New API_HOOKS.md with complete documentation of all hooked functions, proxy protocols, chain modes, and health checking behavior.
+- **Enhanced Documentation**:
   - New "Key Features and Improvements" section in README
   - Updated Install section with unified binary instructions
   - New TESTING.md guide for testing cross-architecture support
+  - New CONTRIBUTING.md with developer guidelines, architecture overview, and coding standards
+  - Inline documentation added to key functions in hook_connect_win32.c
 - **CI/CD Improvements**: GitHub Actions workflow now builds both x86 and x64 versions
+- **Process Name Filtering**: New `process_only` (whitelist) and `process_except` (blacklist) config directives to control which child processes get injected. Case-insensitive matching on executable filename. Maximum 8 filter entries.
+- **Persistent Round-Robin State**: Round-robin chain mode counter is now stored in named shared memory (`Local\proxychains_rr_<pid>`) for consistent rotation across child processes.
+- **WinHTTP/WinINet API Hooks**: Hook `WinHttpOpen` and `WinHttpSetOption` (winhttp.dll) and `InternetOpenA/W` and `InternetSetOptionA/W` (wininet.dll) to force proxy settings on applications using high-level HTTP APIs (PowerShell Invoke-WebRequest, .NET HttpClient, browsers, Windows Update, etc.).
+- **SOCKS5 UDP Associate for DNS**: Implement SOCKS5 UDP ASSOCIATE command (0x03) to forward DNS queries through the proxy's UDP relay. Prevents DNS leaks by routing A and AAAA queries through the proxy. Enable with `proxy_dns_udp_associate` in config.
+- **DNS Cache**: In-memory DNS cache with configurable TTL via `dns_cache_ttl` option (in seconds). Thread-safe using CRITICAL_SECTION, stores both IPv4 and IPv6 results, automatically evicts expired entries. Maximum 256 cached entries with FIFO eviction.
+- **Custom DNS Server**: New `dns_server` config option to specify upstream DNS resolver IP for UDP Associate queries (default: 8.8.8.8:53).
+- **Full IPv6 Proxy Chain Support**: SOCKS5 connect handles IPv6 addresses (ATYP 0x04). DirectConnect now falls back to any available address family for dual-stack compatibility (IPv6 proxy with IPv4 target or vice versa).
+- **Dual-Stack DNS**: DNS cache stores both IPv4 (A) and IPv6 (AAAA) records. GetAddrInfoW cache lookup supports AF_INET, AF_INET6, and AF_UNSPEC queries.
+- **Per-Process Log File**: New `log_file` config option to write log output to a file path.
 
 ### Changed
 - **DLL Path Handling**: Hook DLL paths are now dynamically selected at injection time based on target architecture
@@ -28,6 +51,11 @@ All notable changes to proxychains-windows will be documented in this file.
 - **Logging**: Added architecture detection logging showing which DLL is being used
 - **Documentation**: Removed outdated warnings about requiring matching architecture executables
 - **User Experience**: Single executable can now handle all scenarios (no need for separate x86/x64 versions)
+
+### Fixed
+- **Case-insensitive DNS**: Domain name resolution in hosts file lookup and fake IP mapping now uses case-insensitive comparison (`StrCmpIW` instead of `StrCmpW`), matching RFC behavior
+- **IPv6 link-local CIDR**: Fixed fe80::/8 to correct fe80::/10 prefix length per RFC 4291
+- **IPv6 loopback rule**: Added ::1/128 to default exclusion rules
 
 ### Technical Details
 

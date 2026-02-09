@@ -136,6 +136,8 @@ typedef PXCH_UINT32 PXCH_UINT_MACHINE;
 #define PXCH_PROXY_TYPE_MASK    0x000000FF
 #define PXCH_PROXY_TYPE_INVALID 0x00000000
 #define PXCH_PROXY_TYPE_SOCKS5  0x00000001
+#define PXCH_PROXY_TYPE_SOCKS4  0x00000002
+#define PXCH_PROXY_TYPE_HTTP    0x00000003
 #define PXCH_PROXY_TYPE_DIRECT  0x000000FF
 
 #define PXCH_PROXY_STATE_MASK      0x0000FF00
@@ -152,6 +154,16 @@ typedef PXCH_UINT32 PXCH_UINT_MACHINE;
 
 #define SetProxyType(type, x) (x).dwTag = ((x).dwTag & ~PXCH_PROXY_TYPE_MASK) | PXCH_PROXY_TYPE_##type
 #define SetProxyState(type, x) (x).dwTag = ((x).dwTag & ~PXCH_PROXY_STATE_MASK) | PXCH_PROXY_STATE_##type
+
+#define PXCH_CHAIN_TYPE_STRICT   0x00000001
+#define PXCH_CHAIN_TYPE_DYNAMIC  0x00000002
+#define PXCH_CHAIN_TYPE_RANDOM   0x00000003
+#define PXCH_CHAIN_TYPE_ROUND_ROBIN 0x00000004
+
+#define PXCH_PROCESS_FILTER_NONE      0x00000000
+#define PXCH_PROCESS_FILTER_WHITELIST  0x00000001
+#define PXCH_PROCESS_FILTER_BLACKLIST  0x00000002
+#define PXCH_MAX_PROCESS_FILTER_NUM    8
 
 
 #define PXCH_RULE_TYPE_DOMAIN_KEYWORD   0x00000001
@@ -285,6 +297,27 @@ typedef struct _PXCH_PROXY_SOCKS5_DATA {
 	PXCH_PASSWORD szPassword;
 } PXCH_PROXY_SOCKS5_DATA;
 
+typedef struct _PXCH_PROXY_SOCKS4_DATA {
+	PXCH_UINT32 dwTag;
+	char Ws2_32_ConnectFunctionName[PXCH_MAX_DLL_FUNC_NAME_BUFSIZE];
+	char Ws2_32_HandshakeFunctionName[PXCH_MAX_DLL_FUNC_NAME_BUFSIZE];
+	PXCH_HOST_PORT HostPort;
+	int iAddrLen;
+
+	PXCH_USERNAME szUsername;
+} PXCH_PROXY_SOCKS4_DATA;
+
+typedef struct _PXCH_PROXY_HTTP_DATA {
+	PXCH_UINT32 dwTag;
+	char Ws2_32_ConnectFunctionName[PXCH_MAX_DLL_FUNC_NAME_BUFSIZE];
+	char Ws2_32_HandshakeFunctionName[PXCH_MAX_DLL_FUNC_NAME_BUFSIZE];
+	PXCH_HOST_PORT HostPort;
+	int iAddrLen;
+
+	PXCH_USERNAME szUsername;
+	PXCH_PASSWORD szPassword;
+} PXCH_PROXY_HTTP_DATA;
+
 
 typedef union _PXCH_PROXY_DATA {
 	PXCH_UINT32 dwTag;
@@ -300,6 +333,8 @@ typedef union _PXCH_PROXY_DATA {
 	} CommonHeader;
 
 	PXCH_PROXY_SOCKS5_DATA Socks5;
+	PXCH_PROXY_SOCKS4_DATA Socks4;
+	PXCH_PROXY_HTTP_DATA Http;
 	PXCH_PROXY_DIRECT_DATA Direct;
 } PXCH_PROXY_DATA;
 
@@ -415,6 +450,33 @@ typedef struct _PROXYCHAINS_CONFIG {
 
 	PXCH_UINT32 dwWillFirstTunnelUseIpv4;
 	PXCH_UINT32 dwWillFirstTunnelUseIpv6;
+
+	PXCH_UINT32 dwChainType;
+	PXCH_UINT32 dwChainLen;
+	PXCH_UINT32 dwRandomSeed;
+	PXCH_UINT32 dwRandomSeedSet;
+
+	// DNS cache TTL in seconds (0 = no cache)
+	PXCH_UINT32 dwDnsCacheTtlSeconds;
+
+	// Custom DNS server for proxy_dns_daemon mode (IPv4 sockaddr)
+	// When set, DNS queries are forwarded to this server instead of system default
+	PXCH_IP_ADDRESS CustomDnsServer;
+	PXCH_UINT32 dwCustomDnsServerPort;
+	PXCH_UINT32 dwHasCustomDnsServer;
+
+	// Per-process log file: when set, log output is written to this file path
+	// Supports %PID% placeholder which is replaced with the process ID
+	wchar_t szLogFilePath[PXCH_MAX_CONFIG_FILE_PATH_BUFSIZE];
+	PXCH_UINT32 dwHasLogFile;
+
+	// Process name filtering: whitelist (process_only) or blacklist (process_except)
+	// When dwProcessFilterMode == 1 (whitelist): only inject into matching process names
+	// When dwProcessFilterMode == 2 (blacklist): inject into all except matching process names
+	// When dwProcessFilterMode == 0: no filtering (inject into all child processes)
+	PXCH_UINT32 dwProcessFilterMode;
+	PXCH_UINT32 dwProcessFilterCount;
+	wchar_t szProcessFilterNames[8][PXCH_MAX_HOSTNAME_BUFSIZE];
 } PROXYCHAINS_CONFIG;
 #pragma pack(pop)
 

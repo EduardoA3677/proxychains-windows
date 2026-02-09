@@ -738,6 +738,7 @@ PXCH_DLL_API DWORD __stdcall InitHook(PXCH_INJECT_REMOTE_DATA* pRemoteData)
 		// ALL HOOKS MUST BE DONE HERE
 		// AFTER fork() RESTORES DATA SEGMENT, MINHOOK IS IN UNCERTAIN STATE
 		Win32HookWs2_32();
+		Win32HookWinHttp();
 		//CygwinHook();
 
 		ODBGSTRLOGD(L"InitHook: before MH_EnableHook");

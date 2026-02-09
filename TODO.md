@@ -3,77 +3,87 @@
 ## High Priority Features
 
 ### Dynamic Chain Support
-- [ ] Implement dynamic chain mode (skip dead proxies)
-- [ ] Add proxy health checking mechanism
-- [ ] Implement automatic proxy failover
-- [ ] Add timeout-based proxy detection
-- **Status**: Not implemented (currently only strict chain is supported)
+- [x] Implement dynamic chain mode (skip dead proxies)
+- [x] Add proxy health checking mechanism
+- [x] Implement automatic proxy failover
+- [x] Add timeout-based proxy detection
+- **Status**: Dynamic chain mode with health tracking: per-proxy failure counters, auto-skip dead proxies after 3 consecutive failures, automatic counter reset when all proxies fail
 - **Difficulty**: Medium
 - **Impact**: High - Better reliability when proxies fail
 
 ### Round Robin Chain Support
-- [ ] Implement round-robin proxy selection
-- [ ] Add chain length configuration support
-- [ ] Thread-safe proxy rotation
-- [ ] Persistent state for proxy rotation across processes
-- **Status**: Not implemented
+- [x] Implement round-robin proxy selection
+- [x] Add chain length configuration support
+- [x] Thread-safe proxy rotation
+- [x] Persistent state for proxy rotation across processes
+- **Status**: Round-robin chain mode with named shared memory (Local\proxychains_rr_<pid>) for cross-process persistent counter
 - **Difficulty**: Medium
 - **Impact**: Medium - Load balancing across proxies
 
 ### Random Chain Support
-- [ ] Implement random proxy selection
-- [ ] Configurable chain length
-- [ ] Random seed configuration
-- **Status**: Not implemented
+- [x] Implement random proxy selection
+- [x] Configurable chain length
+- [x] Random seed configuration
+- **Status**: Random chain mode implemented with configurable chain_len and optional random_seed
 - **Difficulty**: Low
 - **Impact**: Low - Useful for testing
 
 ### UDP Associate Support
-- [ ] Implement SOCKS5 UDP associate for DNS
-- [ ] UDP packet forwarding through proxy
-- [ ] DNS queries via UDP associate
-- **Status**: Not implemented (marked as "NOT SUPPORTED" in config)
+- [x] Implement SOCKS5 UDP associate for DNS
+- [x] UDP packet forwarding through proxy
+- [x] DNS queries via UDP associate
+- **Status**: Implemented. SOCKS5 UDP ASSOCIATE (command 0x03) sends DNS queries through the proxy's UDP relay, preventing DNS leaks. Enable with `proxy_dns_udp_associate` config option. Supports authentication, custom DNS server via `dns_server` option, and IPv4/IPv6 (A/AAAA) queries.
 - **Difficulty**: High
 - **Impact**: High - Prevent DNS leaks better
+
+### Hook WinHTTP/WinINet APIs
+- [x] Hook WinHttpOpen to force proxy settings on WinHTTP sessions
+- [x] Hook WinHttpSetOption to intercept proxy configuration changes
+- [x] Hook InternetOpenA/W to force proxy settings on WinINet sessions
+- [x] Hook InternetSetOptionA/W to intercept proxy configuration changes
+- [x] Child data backup/restore for all WinHTTP/WinINet hook function pointers
+- **Status**: Implemented. Hooks intercept WinHTTP (winhttp.dll) and WinINet (wininet.dll) session creation to inject the configured proxy. Applications using these APIs (PowerShell Invoke-WebRequest, browsers, .NET HttpClient, etc.) are now transparently proxied.
+- **Difficulty**: Medium
+- **Impact**: High - Many Windows applications use WinHTTP/WinINet instead of raw Winsock
 
 ## Medium Priority Features
 
 ### Configuration Improvements
-- [ ] Support for HTTP/HTTPS proxy (currently SOCKS5 only)
-- [ ] Support for SOCKS4/SOCKS4a proxies
+- [x] Support for HTTP/HTTPS proxy (HTTP CONNECT method)
+- [x] Support for SOCKS4/SOCKS4a proxies
 - [ ] Multiple configuration file profiles
-- [ ] Environment variable expansion in config
+- [x] Environment variable expansion in config
 - [ ] Reload configuration without restart
-- **Status**: Partially implemented (SOCKS5 only)
+- **Status**: SOCKS5, SOCKS4/SOCKS4a, and HTTP CONNECT proxies supported; environment variables expanded in file paths
 - **Difficulty**: Medium
 - **Impact**: Medium - More flexibility
 
 ### Enhanced DNS Resolution
-- [ ] Implement proxy_dns_daemon feature from proxychains-ng
-- [ ] Better DNS cache management
-- [ ] Custom DNS server configuration
+- [x] Implement proxy_dns_daemon feature from proxychains-ng
+- [x] Better DNS cache management
+- [x] Custom DNS server configuration
 - [ ] DNS-over-HTTPS support
-- [ ] IPv6 DNS resolution improvements
-- **Status**: Basic fake IP DNS implemented
+- [x] IPv6 DNS resolution improvements
+- **Status**: DNS cache with configurable TTL (`dns_cache_ttl`), custom DNS server (`dns_server`), SOCKS5 UDP ASSOCIATE for leak-free DNS. DNS cache is thread-safe with CRITICAL_SECTION, supports both IPv4 and IPv6 results, auto-evicts expired entries. UDP Associate resolves both A and AAAA records through the proxy.
 - **Difficulty**: High
 - **Impact**: High - Better privacy and performance
 
 ### IPv6 Improvements
-- [ ] Full IPv6 proxy chain support
-- [ ] IPv6 local network rules
-- [ ] Better IPv6 fake IP range management
-- [ ] Dual-stack (IPv4/IPv6) handling
-- **Status**: Partial IPv6 support exists
+- [x] Full IPv6 proxy chain support
+- [x] IPv6 local network rules
+- [x] Better IPv6 fake IP range management
+- [x] Dual-stack (IPv4/IPv6) handling
+- **Status**: Full IPv6 proxy chain support: SOCKS5 connect handles IPv6 addresses (ATYP 0x04), DirectConnect falls back to any available address family for dual-stack compatibility, DNS cache stores both IPv4 and IPv6 results, GetAddrInfoW cache lookup supports AF_INET6 queries.
 - **Difficulty**: Medium
 - **Impact**: Medium - Future-proofing
 
 ### Logging and Debugging
 - [ ] Structured logging (JSON output option)
-- [ ] Per-process log files
+- [x] Per-process log files
 - [ ] Log rotation
-- [ ] Performance metrics logging
+- [x] Performance metrics logging
 - [ ] Visual Studio debug output improvements
-- **Status**: Basic logging exists
+- **Status**: Per-proxy success/failure counters tracked via InterlockedIncrement for health monitoring. Per-process log file via `log_file` config directive.
 - **Difficulty**: Low
 - **Impact**: Medium - Better troubleshooting
 
@@ -111,43 +121,43 @@
 
 ### Security Enhancements
 - [ ] Code signing for binaries
-- [ ] ASLR and DEP enforcement verification
+- [x] ASLR and DEP enforcement verification
 - [ ] Security audit of DLL injection code
 - [ ] Sandboxing options
 - [ ] Certificate pinning for HTTPS proxies
-- **Status**: Basic security only
+- **Status**: ASLR (RandomizedBaseAddress) and DEP (DataExecutionPrevention) explicitly enabled in Release builds for both exe and DLL
 - **Difficulty**: High
 - **Impact**: Medium - Enhanced security
 
 ## Bug Fixes & Improvements
 
 ### Known Issues
-- [ ] Domain name resolution should be case-insensitive
+- [x] Domain name resolution should be case-insensitive
 - [ ] Handle "fork-and-exit" child processes properly
-- [ ] Powershell wget compatibility issues
+- [x] Powershell wget compatibility issues
 - [ ] Better ConEmu compatibility (currently incompatible)
 - [ ] Handle Cygwin encoding issues completely
-- **Status**: Some documented in README To-do section
+- **Status**: Case-insensitive DNS fixed. PowerShell wget/Invoke-WebRequest fixed via WinHTTP/WinINet API hooks (PowerShell uses WinHTTP internally). Others documented in README To-do section.
 - **Difficulty**: Various
 - **Impact**: Various
 
 ### Code Quality
-- [ ] Refactor large functions into smaller ones
-- [ ] Improve error handling consistency
-- [ ] Add more inline documentation
-- [ ] Reduce code duplication
+- [x] Refactor large functions into smaller ones
+- [x] Improve error handling consistency
+- [x] Add more inline documentation
+- [x] Reduce code duplication
 - [ ] Better separation of concerns (Win32 vs Cygwin code)
-- **Status**: Basic code structure exists
+- **Status**: TunnelThroughProxyChain extracted from 3 hook functions. Health tracking consolidated into shared counters. Error handling now consistent with InterlockedIncrement-based failure tracking across all chain modes.
 - **Difficulty**: Medium
 - **Impact**: Medium - Maintainability
 
 ### Documentation
-- [ ] Developer documentation
-- [ ] API documentation for hooks
-- [ ] Architecture diagrams
+- [x] Developer documentation
+- [x] API documentation for hooks
+- [x] Architecture diagrams
 - [ ] Video tutorials
-- [ ] Troubleshooting guide expansion
-- **Status**: Basic README and TESTING.md exist
+- [x] Troubleshooting guide expansion
+- **Status**: CONTRIBUTING.md with architecture diagrams (connection flow, DNS resolution, cross-arch injection). API_HOOKS.md documents all hooked functions and proxy protocols. Troubleshooting expanded in TESTING.md.
 - **Difficulty**: Low
 - **Impact**: Medium - Easier contribution
 
@@ -173,12 +183,12 @@
 ## Feature Requests from Community
 
 ### User-Requested Features
-- [ ] Support for authentication with proxy servers (username/password)
-- [ ] Whitelist/blacklist based on process name
+- [x] Support for authentication with proxy servers (username/password)
+- [x] Whitelist/blacklist based on process name
 - [ ] Global system-wide proxying option
 - [ ] Browser extension integration
 - [ ] VPN-like system proxy configuration
-- **Status**: Not implemented
+- **Status**: Proxy authentication implemented for SOCKS5/SOCKS4/HTTP. Process filtering via process_only (whitelist) and process_except (blacklist) config directives.
 - **Difficulty**: Various
 - **Impact**: Various - Based on user demand
 
@@ -207,22 +217,23 @@
 ## Next Actions
 
 ### Immediate (Next Sprint)
-1. Implement dynamic chain support (skip dead proxies)
-2. Add HTTP/HTTPS proxy support
+1. ~~Implement dynamic chain support (skip dead proxies)~~ ✅ Done
+2. ~~Add HTTP/HTTPS proxy support~~ ✅ Done
 3. Create unit testing framework
-4. Improve documentation
+4. ~~Improve documentation~~ ✅ Done (CONTRIBUTING.md, API_HOOKS.md created)
 
 ### Short Term (1-2 months)
-1. Implement round-robin and random chain modes
-2. UDP associate for DNS
-3. Enhanced logging system
+1. ~~Implement round-robin and random chain modes~~ ✅ Done
+2. ~~UDP associate for DNS~~ ✅ Done
+3. ~~Enhanced logging system~~ ✅ Done (health tracking metrics, per-process log files)
 4. Security audit
+5. ~~Proxy health checking and failover~~ ✅ Done
 
 ### Long Term (3-6 months)
 1. GUI application
 2. Performance optimizations
-3. Advanced proxy authentication
-4. Full IPv6 support
+3. ~~Advanced proxy authentication~~ ✅ Done (SOCKS5/SOCKS4/HTTP auth)
+4. ~~Full IPv6 support~~ ✅ Done (IPv6 proxy chains, dual-stack, DNS cache)
 
 ## Contributing
 
@@ -233,4 +244,4 @@ If you want to contribute to any of these features:
 4. Create a feature branch
 5. Submit a pull request
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details (to be created).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details.

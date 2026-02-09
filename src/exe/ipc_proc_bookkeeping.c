@@ -309,7 +309,7 @@ DWORD NextAvailableFakeIpByDomainHash(PXCH_IP_ADDRESS* pFakeIpv4, PXCH_IP_ADDRES
 		IndexToIp(g_pPxchConfig, &AsKey.Ip, iSearchIpv4);
 		LOGV(L"Map index to IPv4: " WPRDW L" -> %ls", iSearchIpv4, FormatHostPortToStr(&AsKey.Ip, sizeof(PXCH_IP_ADDRESS)));
 		HASH_FIND(hh, g_tabFakeIpHostname, &AsKey.Ip, sizeof(PXCH_IP_ADDRESS) + sizeof(PXCH_UINT32), Entry);
-		if (!Entry || StrCmpW(Entry->Hostname.szValue, pHostname->szValue) == 0) break;
+		if (!Entry || StrCmpIW(Entry->Hostname.szValue, pHostname->szValue) == 0) break;
 		iSearchIpv4++;
 		if (iSearchIpv4 >= ((PXCH_UINT64)1 << iIpv4ShiftLength) - 1) {
 			iSearchIpv4 = 1;
@@ -336,7 +336,7 @@ DWORD NextAvailableFakeIpByDomainHash(PXCH_IP_ADDRESS* pFakeIpv4, PXCH_IP_ADDRES
 		IndexToIp(g_pPxchConfig, &AsKey.Ip, iSearchIpv6);
 		LOGV(L"Map index to IPv6: " WPRDW L" -> %ls", iSearchIpv6, FormatHostPortToStr(&AsKey.Ip, sizeof(PXCH_IP_ADDRESS)));
 		HASH_FIND(hh, g_tabFakeIpHostname, &AsKey.Ip, sizeof(PXCH_IP_ADDRESS) + sizeof(PXCH_UINT32), Entry);
-		if (!Entry || StrCmpW(Entry->Hostname.szValue, pHostname->szValue) == 0) break;
+		if (!Entry || StrCmpIW(Entry->Hostname.szValue, pHostname->szValue) == 0) break;
 		iSearchIpv6++;
 		if (iSearchIpv6 >= ((iIpv6ShiftLength == 64) ? 0xFFFFFFFFFFFFFFFF : (((PXCH_UINT64)1 << iIpv6ShiftLength) - 1))) {
 			iSearchIpv6 = 1;

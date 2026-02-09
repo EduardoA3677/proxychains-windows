@@ -88,6 +88,155 @@ curl https://ifconfig.me
 
 Both the parent (cmd.exe) and child (curl.exe) should be proxied.
 
+## Testing Chain Modes
+
+### Test 6: Strict Chain Mode (Default)
+
+1. Configure `proxychains.conf` with `strict_chain` and multiple proxies
+2. All proxies must be online for the chain to work
+3. Test:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. If any proxy is down, the connection should fail
+
+### Test 7: Dynamic Chain Mode
+
+1. Configure `proxychains.conf`:
+   ```
+   dynamic_chain
+   ```
+2. Add multiple proxies in `[ProxyList]`, with at least one intentionally dead
+3. Test:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. Check logs - dead proxies should show a warning and be skipped
+5. Connection should succeed through the alive proxy/proxies
+6. If ALL proxies are dead, the connection should fail
+
+### Test 8: Random Chain Mode
+
+1. Configure `proxychains.conf`:
+   ```
+   random_chain
+   chain_len = 1
+   ```
+2. Add multiple working proxies in `[ProxyList]`
+3. Test multiple times:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. Check logs - different proxies should be selected each time
+5. Verify `chain_len` controls how many proxies are used per connection
+
+### Test 9: Round-Robin Chain Mode
+
+1. Configure `proxychains.conf`:
+   ```
+   round_robin_chain
+   chain_len = 1
+   ```
+2. Add multiple working proxies in `[ProxyList]`
+3. Test multiple times:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   proxychains.exe curl.exe https://ifconfig.me
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. Check logs - proxies should be selected sequentially (0, 1, 2, 0, 1, 2, ...)
+
+### Test 10: SOCKS4 Proxy
+
+1. Configure `proxychains.conf` with a SOCKS4 proxy:
+   ```
+   [ProxyList]
+   socks4 proxy-server 1080
+   ```
+2. Test:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+3. SOCKS4 only supports IPv4 connections; IPv6 targets will fail with an appropriate error
+
+### Test 11: HTTP CONNECT Proxy
+
+1. Configure `proxychains.conf` with an HTTP proxy:
+   ```
+   [ProxyList]
+   http proxy-server 8080
+   ```
+2. For authenticated proxy:
+   ```
+   [ProxyList]
+   http proxy-server 8080 username password
+   ```
+3. Test:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+
+### Test 12: Case-Insensitive DNS
+
+1. Add entries to custom hosts file with mixed case:
+   ```
+   127.0.0.1 MyHost.Example.COM
+   ```
+2. Test that resolving `myhost.example.com` (lowercase) matches the entry
+3. Verify the connection is handled correctly
+
+### Test 13: Random Seed Configuration
+
+1. Configure `proxychains.conf`:
+   ```
+   random_chain
+   chain_len = 1
+   random_seed = 42
+   ```
+2. Add multiple working proxies in `[ProxyList]`
+3. Test multiple times:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. With the same seed, the proxy selection order should be deterministic
+5. Remove the `random_seed` line and verify behavior returns to time-based randomness
+
+### Test 14: Environment Variable Expansion
+
+1. Set an environment variable with a hosts file path:
+   ```cmd
+   set CUSTOM_HOSTS=%USERPROFILE%\my_hosts
+   ```
+2. Configure `proxychains.conf`:
+   ```
+   custom_hosts_file_path %USERPROFILE%\my_hosts
+   ```
+3. Create the hosts file at the expanded path
+4. Verify the hosts file is loaded correctly
+5. Also test with the `-f` flag:
+   ```cmd
+   proxychains.exe -f %APPDATA%\proxychains.conf curl.exe https://ifconfig.me
+   ```
+
+### Test 15: Timeout Diagnostics
+
+1. Configure `proxychains.conf` with a non-existent proxy:
+   ```
+   [ProxyList]
+   socks5 192.0.2.1 1080
+   ```
+2. Set a short timeout:
+   ```
+   tcp_connect_time_out 2000
+   ```
+3. Test:
+   ```cmd
+   proxychains.exe curl.exe https://ifconfig.me
+   ```
+4. Verify the error message shows the timeout value and target address
+
 ## Windows 11 Specific Testing
 
 ### Test on Windows 11
@@ -130,23 +279,66 @@ Both the parent (cmd.exe) and child (curl.exe) should be proxied.
 - Verify the correct architecture DLL is being injected
 - Check if application is compatible with DLL injection
 
+### Issue: Proxy Connection Timeout
+
+**Symptoms:** Long delays or `WSAETIMEDOUT` errors
+**Solution:**
+- Check proxy server is running and reachable
+- Increase timeouts in config: `tcp_connect_time_out 10000` and `tcp_read_time_out 15000`
+- Check firewall is not blocking the proxy port
+- Try connecting directly to the proxy server with a SOCKS client
+- In dynamic chain mode, check logs for "proxy marked dead" messages - the proxy may have been auto-skipped after 3 failures
+
+### Issue: DNS Leak
+
+**Symptoms:** DNS queries bypass the proxy
+**Solution:**
+- Ensure `proxy_dns` is enabled in `proxychains.conf`
+- Use `DOMAIN-KEYWORD` or `DOMAIN-SUFFIX` rules for specific domains
+- Check that the application uses `getaddrinfo()` or `gethostbyname()` (statically linked resolvers are not hooked)
+- For UDP-based DNS: proxychains currently only intercepts TCP DNS queries
+
+### Issue: Child Processes Not Proxied
+
+**Symptoms:** Main application proxied but spawned processes are not
+**Solution:**
+- This is expected for "fork-and-exit" patterns where the parent exits immediately
+- If `delete_fake_ip_after_child_exits` is set to 1, fake IP entries may be cleaned up too early
+- Check logs for `CreateProcessW` hook messages to verify injection into child processes
+
+### Issue: PowerShell wget Compatibility
+
+**Symptoms:** `Invoke-WebRequest` or `wget` alias fails through proxy
+**Solution:**
+- PowerShell's `Invoke-WebRequest` uses .NET HTTP stack which may not go through Winsock hooks
+- Use `curl.exe` instead: `proxychains.exe curl.exe https://example.com`
+- Or use PowerShell's `[System.Net.WebClient]` with explicit proxy settings
+
 ## Logging and Debugging
 
 Enable debug logging for troubleshooting:
 
 1. Edit `proxychains.conf`:
    ```
-   # Uncomment to see more details
-   #quiet_mode
+   # Set verbose logging
+   log_level 600
    ```
 
 2. Set log level in config or via command line:
    ```cmd
-   proxychains.exe -q <application>  # quiet
-   proxychains.exe -v <application>  # verbose
+   proxychains.exe -q <application>  # quiet (errors only)
+   proxychains.exe -v <application>  # verbose (maximum detail)
    ```
 
 3. Check Windows Event Viewer for application errors
+
+4. Log level reference:
+   - `600` - VERBOSE: All messages including per-byte I/O details
+   - `500` - DEBUG: Connection routing, proxy selection, health tracking
+   - `400` - INFO: Proxy connections, chain mode selection
+   - `300` - WARNING: Proxy failures, timeouts, health-based skips
+   - `200` - ERROR: Chain failures, configuration errors
+   - `100` - CRITICAL: Fatal errors only
 
 ## Expected Results
 
@@ -156,6 +348,162 @@ A successful test should show:
 3. Network traffic going through the configured proxy
 4. No errors or warnings in the logs (except for expected warnings)
 5. Child processes also being proxied automatically
+
+## Testing Proxy Health Checking
+
+### Test 16: Dynamic Chain with Health Tracking
+
+1. Configure `proxychains.conf`:
+   ```
+   dynamic_chain
+   ```
+2. Add 3 proxies: one alive, one dead (non-existent), one alive
+3. Make multiple connection attempts
+4. Check logs: dead proxy should show increasing failure count, then be auto-skipped
+5. Expected: `Dynamic chain: proxy 1 marked dead (3 consecutive failures), skipping`
+
+### Test 17: Health Counter Reset
+
+1. Configure `proxychains.conf` with `dynamic_chain`
+2. Use all dead proxies
+3. First attempt: all proxies tried and fail, counters reset
+4. Second attempt: all proxies retried (counters were reset)
+5. Expected: `Dynamic chain: all proxies failed! Resetting health counters.`
+
+### Test 18: Strict Chain with Failure Tracking
+
+1. Configure `proxychains.conf` with `strict_chain`
+2. First proxy is alive, second is dead
+3. Make connection attempt
+4. Check logs: failure count should increment for dead proxy
+5. Expected: `Strict chain: proxy 1 failed (failure count: 1)`
+
+## Testing Process Name Filtering
+
+### Test 19: Process Whitelist (process_only)
+
+1. Configure `proxychains.conf`:
+   ```
+   process_only = curl.exe
+   ```
+2. Run:
+   ```cmd
+   proxychains.exe cmd.exe /c "curl https://ifconfig.me && ping localhost"
+   ```
+3. Expected: curl.exe gets injected (proxied), ping.exe does NOT get injected
+4. Check logs: `Process filter: ping.exe not in whitelist, skipping injection`
+
+### Test 20: Process Blacklist (process_except)
+
+1. Configure `proxychains.conf`:
+   ```
+   process_except = notepad.exe
+   process_except = calc.exe
+   ```
+2. Run:
+   ```cmd
+   proxychains.exe cmd.exe /c "curl https://ifconfig.me && notepad"
+   ```
+3. Expected: curl.exe gets injected (proxied), notepad.exe does NOT get injected
+4. Check logs: `Process filter: notepad.exe matched blacklist entry, skipping injection`
+
+### Test 21: Persistent Round-Robin State
+
+1. Configure `proxychains.conf`:
+   ```
+   round_robin_chain
+   chain_len = 1
+   ```
+2. Add 3 proxies
+3. Run multiple commands in succession:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   proxychains.exe curl https://ifconfig.me
+   ```
+4. Expected: Each command uses a different proxy (rotation persists across processes via shared memory)
+
+### Test 22: SOCKS5 UDP Associate DNS
+
+1. Configure `proxychains.conf`:
+   ```
+   proxy_dns_udp_associate
+   dns_server 8.8.8.8
+   ```
+2. Run with debug logging:
+   ```cmd
+   proxychains.exe -l 500 curl https://ifconfig.me
+   ```
+3. Expected: DNS queries are resolved through the SOCKS5 proxy's UDP relay
+4. Check logs: `DNS via SOCKS5 UDP ASSOCIATE: <hostname> resolved (IPv4=1, IPv6=0)`
+
+### Test 23: DNS Cache
+
+1. Configure `proxychains.conf`:
+   ```
+   dns_cache_ttl = 300
+   ```
+2. Run with debug logging:
+   ```cmd
+   proxychains.exe -l 500 curl https://ifconfig.me && proxychains.exe -l 500 curl https://ifconfig.me
+   ```
+3. Expected: Second request shows DNS cache hit
+4. Check logs: `DNS cache hit: ifconfig.me` on second request
+
+### Test 24: Custom DNS Server
+
+1. Configure `proxychains.conf`:
+   ```
+   proxy_dns_udp_associate
+   dns_server 1.1.1.1:53
+   ```
+2. Run:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+3. Expected: DNS queries are sent to 1.1.1.1 instead of default 8.8.8.8
+
+### Test 25: WinHTTP Hook (PowerShell)
+
+1. Run PowerShell through proxychains:
+   ```cmd
+   proxychains.exe powershell -Command "Invoke-WebRequest https://ifconfig.me -UseBasicParsing"
+   ```
+2. Expected: PowerShell's HTTP request goes through the proxy
+3. Check logs: `WinHttpOpen: Overriding access type to NAMED_PROXY`
+
+### Test 26: WinINet Hook
+
+1. Run an application that uses WinINet:
+   ```cmd
+   proxychains.exe powershell -Command "[System.Net.WebClient]::new().DownloadString('https://ifconfig.me')"
+   ```
+2. Expected: The request goes through the proxy
+
+### Test 27: IPv6 Dual-Stack
+
+1. Configure `proxychains.conf`:
+   ```
+   first_tunnel_uses_ipv4 1
+   first_tunnel_uses_ipv6 1
+   ```
+2. Run:
+   ```cmd
+   proxychains.exe -l 500 curl https://ipv6.ifconfig.me
+   ```
+3. Expected: IPv6 connections are properly handled through the proxy chain
+
+### Test 28: Per-Process Log File
+
+1. Configure `proxychains.conf`:
+   ```
+   log_file C:\temp\proxychains_debug.log
+   ```
+2. Run:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+3. Expected: Log output is written to `C:\temp\proxychains_debug.log`
 
 ## Reporting Issues
 

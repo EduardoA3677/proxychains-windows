@@ -76,4 +76,5 @@ extern FP_ORIGINAL_FUNC2(Cygwin1, connect);
 DECLARE_HOOK_FUNC2(Cygwin1, connect);
 
 void Win32HookWs2_32(void);
+void Win32HookWinHttp(void);
 void CygwinHook(void);

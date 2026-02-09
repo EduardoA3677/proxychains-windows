@@ -159,6 +159,13 @@ DWORD IpcClientRegisterChildProcessAndBackupChildData()
 	ORIGINAL_FUNC_BACKUP2(Ws2_32, getnameinfo);
 	ORIGINAL_FUNC_BACKUP2(Ws2_32, GetNameInfoW);
 
+	ORIGINAL_FUNC_BACKUP2(WinHttp, Open);
+	ORIGINAL_FUNC_BACKUP2(WinHttp, SetOption);
+	ORIGINAL_FUNC_BACKUP2(WinINet, InternetOpenA);
+	ORIGINAL_FUNC_BACKUP2(WinINet, InternetOpenW);
+	ORIGINAL_FUNC_BACKUP2(WinINet, InternetSetOptionA);
+	ORIGINAL_FUNC_BACKUP2(WinINet, InternetSetOptionW);
+
 	if ((dwLastError = ChildDataToMessage(chMessageBuf, (PXCH_UINT32*)&cbMessageSize, pChildData)) != NO_ERROR) return dwLastError;
 	if ((dwLastError = IpcCommunicateWithServer(chMessageBuf, cbMessageSize, chRespMessageBuf, (PXCH_UINT32*)&cbRespMessageSize)) != NO_ERROR) return dwLastError;
 
@@ -241,6 +248,13 @@ PXCH_UINT32 RestoreChildDataIfNecessary()
 	ORIGINAL_FUNC_RESTORE2(Ws2_32, FreeAddrInfoExW);
 	ORIGINAL_FUNC_RESTORE2(Ws2_32, getnameinfo);
 	ORIGINAL_FUNC_RESTORE2(Ws2_32, GetNameInfoW);
+
+	ORIGINAL_FUNC_RESTORE2(WinHttp, Open);
+	ORIGINAL_FUNC_RESTORE2(WinHttp, SetOption);
+	ORIGINAL_FUNC_RESTORE2(WinINet, InternetOpenA);
+	ORIGINAL_FUNC_RESTORE2(WinINet, InternetOpenW);
+	ORIGINAL_FUNC_RESTORE2(WinINet, InternetSetOptionA);
+	ORIGINAL_FUNC_RESTORE2(WinINet, InternetSetOptionW);
 
 	IPCLOGV(L"g_pPxchConfig restored to %p", g_pPxchConfig);
 	IPCLOGV(L"g_pRemoteData restored to %p", g_pRemoteData);
