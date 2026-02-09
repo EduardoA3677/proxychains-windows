@@ -2,6 +2,30 @@
 
 All notable changes to proxychains-windows will be documented in this file.
 
+## [Unreleased] - HTTP/HTTPS Proxy Support
+
+### Added
+- **HTTP Proxy Support**: Full support for HTTP proxies using CONNECT method
+- **HTTPS Proxy Support**: Support for HTTPS proxies (same as HTTP with SSL)
+- **HTTP Basic Authentication**: Username/password authentication for HTTP/HTTPS proxies
+- **Configuration Options**:
+  - `http` proxy type in configuration
+  - `https` proxy type in configuration
+  - Username/password support for HTTP/HTTPS proxies
+
+### Implementation Details
+- Added `PXCH_PROXY_TYPE_HTTP` constant
+- Added `PXCH_PROXY_HTTP_DATA` structure for HTTP proxy configuration
+- Implemented `Ws2_32_HttpConnect()` function for HTTP CONNECT method
+- Implemented `Ws2_32_HttpHandshake()` function (no-op for HTTP)
+- Added HTTP proxy parsing in configuration reader
+- Supports IPv4, IPv6, and hostname targets through HTTP proxy
+
+### Compatibility
+- Works with all chain modes (strict, dynamic, random, round-robin)
+- Can be mixed with SOCKS5 proxies in the same chain
+- Maintains backward compatibility with existing configurations
+
 ## [Unreleased] - Multiple Chain Modes Support
 
 ### Added

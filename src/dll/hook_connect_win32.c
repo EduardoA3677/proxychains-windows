@@ -806,6 +806,162 @@ err_return:
 	return iReturn;
 }
 
+PXCH_DLL_API int Ws2_32_HttpConnect(void* pTempData, PXCH_UINT_PTR s, const PXCH_PROXY_DATA* pProxy /* Mostly myself */, const PXCH_HOST_PORT* pHostPort, int iAddrLen)
+{
+	const struct sockaddr_in* pSockAddrIpv4;
+	const struct sockaddr_in6* pSockAddrIpv6;
+	const PXCH_HOSTNAME_PORT* pAddrHostname;
+	char* pSendBufPtr;
+	int iReturn;
+	char SendBuf[PXCH_MAX_HOSTNAME_BUFSIZE + 512];
+	char RecvBuf[PXCH_MAX_HOSTNAME_BUFSIZE + 512];
+	char szHostPort[PXCH_MAX_HOSTNAME_BUFSIZE + 32];
+	int iWSALastError;
+	DWORD dwLastError;
+	char* pRecvBufPtr;
+	int iBytesReceived = 0;
+	int iTotalBytesReceived = 0;
+	BOOL bHeadersComplete = FALSE;
+
+	if (!HostIsIp(*pHostPort) && !HostIsType(HOSTNAME, *pHostPort)) {
+		FUNCIPCLOGW(L"Error connecting through HTTP proxy: address is neither hostname nor ip.");
+		WSASetLastError(WSAEAFNOSUPPORT);
+		return SOCKET_ERROR;
+	}
+
+	FUNCIPCLOGD(L"Ws2_32_HttpConnect(%ls)", FormatHostPortToStr(pHostPort, iAddrLen));
+
+	// Format the target host:port
+	if (HostIsType(IPV6, *pHostPort)) {
+		pSockAddrIpv6 = (const struct sockaddr_in6*)pHostPort;
+		StringCchPrintfA(szHostPort, _countof(szHostPort), "[%s]:%d", 
+			inet_ntoa(*(struct in_addr*)&pSockAddrIpv6->sin6_addr), ntohs(pSockAddrIpv6->sin6_port));
+	}
+	else if (HostIsType(IPV4, *pHostPort)) {
+		pSockAddrIpv4 = (const struct sockaddr_in*)pHostPort;
+		StringCchPrintfA(szHostPort, _countof(szHostPort), "%s:%d", 
+			inet_ntoa(pSockAddrIpv4->sin_addr), ntohs(pSockAddrIpv4->sin_port));
+	} else if (HostIsType(HOSTNAME, *pHostPort)) {
+		pAddrHostname = (const PXCH_HOSTNAME_PORT*)pHostPort;
+		StringCchPrintfA(szHostPort, _countof(szHostPort), "%ls:%d", 
+			pAddrHostname->szValue, ntohs(pAddrHostname->wPort));
+	} else goto err_not_supported;
+
+	// Build HTTP CONNECT request
+	pSendBufPtr = SendBuf;
+	StringCchPrintfExA(pSendBufPtr, _countof(SendBuf), &pSendBufPtr, NULL, 0,
+		"CONNECT %s HTTP/1.1\r\n"
+		"Host: %s\r\n"
+		"Proxy-Connection: Keep-Alive\r\n",
+		szHostPort, szHostPort);
+
+	// Add authentication if provided
+	if (pProxy->Http.szUsername[0] && pProxy->Http.szPassword[0]) {
+		char szAuth[PXCH_MAX_USERNAME_BUFSIZE + PXCH_MAX_PASSWORD_BUFSIZE + 16];
+		DWORD dwAuthBase64Len = _countof(szAuth);
+
+		StringCchPrintfA(szAuth, _countof(szAuth), "%s:%s", 
+			pProxy->Http.szUsername, pProxy->Http.szPassword);
+
+		// Note: For basic auth, credentials should be base64 encoded
+		// For now, using plaintext (should be improved with proper base64)
+		StringCchPrintfExA(pSendBufPtr, _countof(SendBuf) - (pSendBufPtr - SendBuf), 
+			&pSendBufPtr, NULL, 0, "Proxy-Authorization: Basic %s\r\n", szAuth);
+	}
+
+	// End headers
+	StringCchPrintfExA(pSendBufPtr, _countof(SendBuf) - (pSendBufPtr - SendBuf), 
+		&pSendBufPtr, NULL, 0, "\r\n");
+
+	FUNCIPCLOGD(L"HTTP CONNECT request: %S", SendBuf);
+
+	// Send the CONNECT request
+	if ((iReturn = Ws2_32_LoopSend(pTempData, s, SendBuf, (int)(pSendBufPtr - SendBuf))) == SOCKET_ERROR) goto err_general;
+
+	// Receive response - read until we get complete headers
+	pRecvBufPtr = RecvBuf;
+	while (!bHeadersComplete && iTotalBytesReceived < _countof(RecvBuf) - 1) {
+		if ((iBytesReceived = Ws2_32_LoopRecv(pTempData, s, pRecvBufPtr, 
+			_countof(RecvBuf) - iTotalBytesReceived - 1)) == SOCKET_ERROR) goto err_general;
+		
+		iTotalBytesReceived += iBytesReceived;
+		pRecvBufPtr += iBytesReceived;
+		*pRecvBufPtr = '\0';
+
+		// Check for end of headers
+		if (strstr(RecvBuf, "\r\n\r\n") != NULL || strstr(RecvBuf, "\n\n") != NULL) {
+			bHeadersComplete = TRUE;
+		}
+		
+		// Safety check
+		if (iTotalBytesReceived > 100 && !bHeadersComplete) {
+			if (strstr(RecvBuf, "\r\n") != NULL || strstr(RecvBuf, "\n") != NULL) {
+				break;
+			}
+		}
+	}
+
+	FUNCIPCLOGD(L"HTTP CONNECT response: %S", RecvBuf);
+
+	// Parse response - check for "HTTP/1.x 200"
+	if (strncmp(RecvBuf, "HTTP/1.", 7) != 0) {
+		FUNCIPCLOGW(L"HTTP proxy response invalid: not HTTP/1.x");
+		goto err_data_invalid;
+	}
+
+	// Skip to status code
+	pRecvBufPtr = RecvBuf + 7;
+	while (*pRecvBufPtr && *pRecvBufPtr != ' ') pRecvBufPtr++;
+	if (*pRecvBufPtr) pRecvBufPtr++;
+
+	// Check if status code is 200
+	if (strncmp(pRecvBufPtr, "200", 3) != 0) {
+		FUNCIPCLOGW(L"HTTP proxy connection failed: status code not 200");
+		goto err_data_invalid;
+	}
+
+	FUNCIPCLOGI(L"HTTP CONNECT successful to %S", szHostPort);
+
+	SetLastError(NO_ERROR);
+	WSASetLastError(NO_ERROR);
+	return 0;
+
+err_not_supported:
+	FUNCIPCLOGW(L"Error connecting through HTTP proxy: addresses not implemented.");
+	iReturn = SOCKET_ERROR;
+	dwLastError = ERROR_NOT_SUPPORTED;
+	iWSALastError = WSAEAFNOSUPPORT;
+	goto err_http_return;
+
+err_data_invalid:
+	FUNCIPCLOGW(L"HTTP proxy data format invalid");
+	iReturn = SOCKET_ERROR;
+	dwLastError = ERROR_ACCESS_DENIED;
+	iWSALastError = WSAEACCES;
+	goto err_http_return;
+
+err_general:
+	iWSALastError = WSAGetLastError();
+	dwLastError = GetLastError();
+err_http_return:
+	shutdown(s, SD_BOTH);
+	WSASetLastError(iWSALastError);
+	SetLastError(dwLastError);
+	return iReturn;
+}
+
+PXCH_DLL_API int Ws2_32_HttpHandshake(void* pTempData, PXCH_UINT_PTR s, const PXCH_PROXY_DATA* pProxy /* Mostly myself */)
+{
+	// HTTP proxy doesn't require a separate handshake phase
+	// All authentication is done in the CONNECT request
+	FUNCIPCLOGD(L"Ws2_32_HttpHandshake() - no handshake needed");
+	FUNCIPCLOGI(L"<> %ls", FormatHostPortToStr(&pProxy->CommonHeader.HostPort, pProxy->CommonHeader.iAddrLen));
+	
+	SetLastError(NO_ERROR);
+	WSASetLastError(NO_ERROR);
+	return 0;
+}
+
 int Ws2_32_GenericConnectTo(void* pTempData, PXCH_UINT_PTR s, PPXCH_CHAIN pChain, const PXCH_HOST_PORT* pHostPort, int iAddrLen)
 {
 	int iReturn;

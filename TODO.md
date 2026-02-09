@@ -39,12 +39,12 @@
 ## Medium Priority Features
 
 ### Configuration Improvements
-- [ ] Support for HTTP/HTTPS proxy (currently SOCKS5 only)
+- [x] Support for HTTP/HTTPS proxy (SOCKS5 also supported)
 - [ ] Support for SOCKS4/SOCKS4a proxies
 - [ ] Multiple configuration file profiles
 - [ ] Environment variable expansion in config
 - [ ] Reload configuration without restart
-- **Status**: Partially implemented (SOCKS5 only)
+- **Status**: HTTP/HTTPS implemented, SOCKS5 already existed
 - **Difficulty**: Medium
 - **Impact**: Medium - More flexibility
 

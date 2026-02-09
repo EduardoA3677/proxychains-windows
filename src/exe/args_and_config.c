@@ -695,6 +695,10 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 			bIntoProxyList = TRUE;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"socks5")) {
 			dwProxyNum++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"http")) {
+			dwProxyNum++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"https")) {
+			dwProxyNum++;
 		} else if (bIntoProxyList) {
 			LOGE(L"Config line %llu: Unknown proxy: %.*ls", ullLineNum, sOptionNameEnd - sOption, sOption);
 			goto err_invalid_config;
@@ -976,6 +980,78 @@ DWORD LoadConfiguration(PROXYCHAINS_CONFIG** ppPxchConfig, PROXYCHAINS_CONFIG* p
 			StringCchCopyA(pSocks5->Ws2_32_ConnectFunctionName, _countof(pSocks5->Ws2_32_ConnectFunctionName), "Ws2_32_Socks5Connect");
 			StringCchCopyA(pSocks5->Ws2_32_HandshakeFunctionName, _countof(pSocks5->Ws2_32_HandshakeFunctionName), "Ws2_32_Socks5Handshake");
 			pSocks5->iAddrLen = sizeof(PXCH_HOST_PORT);
+			dwProxyCounter++;
+		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"http") || WSTR_EQUAL(sOption, sOptionNameEnd, L"https")) {
+			WCHAR* sHostStart;
+			WCHAR* sHostEnd;
+			WCHAR* sPortStart;
+			WCHAR* sPortEnd;
+			WCHAR* sUserPassStart;
+			WCHAR* sUserPassEnd;
+			long lPort;
+			BOOL bIsHttps = WSTR_EQUAL(sOption, sOptionNameEnd, L"https");
+
+			PXCH_PROXY_HTTP_DATA* pHttp = &PXCH_CONFIG_PROXY_ARR(pPxchConfig)[dwProxyCounter].Http;
+
+			pHttp->dwTag = PXCH_PROXY_TYPE_HTTP;
+
+			sHostStart = ConsumeStringInSet(sOptionNameEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sHostEnd = ConsumeStringUntilSet(sHostStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sHostStart == sHostEnd) {
+				pszParseErrorMessage = bIsHttps ? L"HTTPS proxy server host missing" : L"HTTP proxy server host missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetIpPortValue((PXCH_IP_PORT*)&pHttp->HostPort, NULL, sHostStart, sHostEnd, FALSE, TRUE) == 0) {
+				if (PXCH_CONFIG_PROXY_ARR(pPxchConfig)[dwProxyCounter].Http.HostPort.CommonHeader.wPort != 0) {
+					pszParseErrorMessage = bIsHttps ? L"HTTPS proxy server host address should not have port" : L"HTTP proxy server host address should not have port";
+					goto err_invalid_config_with_msg;
+				}
+			} else {
+				pHttp->HostPort.HostnamePort.wTag = PXCH_HOST_TYPE_HOSTNAME;
+				StringCchCopyNW(pHttp->HostPort.HostnamePort.szValue, _countof(pHttp->HostPort.HostnamePort.szValue), sHostStart, sHostEnd - sHostStart);
+			}
+
+			sPortStart = ConsumeStringInSet(sHostEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sPortEnd = ConsumeStringUntilSet(sPortStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (sPortStart == sPortEnd) {
+				pszParseErrorMessage = bIsHttps ? L"HTTPS proxy server port missing" : L"HTTP proxy server port missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			if (OptionGetNumberValue(&lPort, sPortStart, sPortEnd, 1, 65535, TRUE)) {
+				goto err_invalid_config_with_msg;
+			}
+
+			pHttp->HostPort.CommonHeader.wPort = ntohs((PXCH_UINT16)lPort);
+
+			sUserPassStart = ConsumeStringInSet(sPortEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sUserPassEnd = ConsumeStringUntilSet(sUserPassStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+
+			if (*sUserPassStart == L'\0' || sUserPassStart == sUserPassEnd) goto http_end;
+
+			StringCchPrintfA(pHttp->szUsername, _countof(pHttp->szUsername), "%.*ls", sUserPassEnd - sUserPassStart, sUserPassStart);
+
+			sUserPassStart = ConsumeStringInSet(sUserPassEnd, NULL, PXCH_CONFIG_PARSE_WHITE);
+			sUserPassEnd = ConsumeStringUntilSet(sUserPassStart, NULL, PXCH_CONFIG_PARSE_WHITE);
+			if (*sUserPassStart == L'\0' || sUserPassStart == sUserPassEnd) {
+				pszParseErrorMessage = bIsHttps ? L"HTTPS proxy password missing" : L"HTTP proxy password missing";
+				goto err_invalid_config_with_msg;
+			}
+
+			StringCchPrintfA(pHttp->szPassword, _countof(pHttp->szPassword), "%.*ls", sUserPassEnd - sUserPassStart, sUserPassStart);
+				
+			if (*ConsumeStringInSet(sUserPassEnd, NULL, PXCH_CONFIG_PARSE_WHITE) != L'\0') {
+				pszParseErrorMessage = bIsHttps ? L"Extra character after https proxy definition" : L"Extra character after http proxy definition";
+				goto err_invalid_config_with_msg;
+			}
+
+		http_end:
+			StringCchCopyA(pHttp->Ws2_32_ConnectFunctionName, _countof(pHttp->Ws2_32_ConnectFunctionName), "Ws2_32_HttpConnect");
+			StringCchCopyA(pHttp->Ws2_32_HandshakeFunctionName, _countof(pHttp->Ws2_32_HandshakeFunctionName), "Ws2_32_HttpHandshake");
+			pHttp->iAddrLen = sizeof(PXCH_HOST_PORT);
 			dwProxyCounter++;
 		} else if (WSTR_EQUAL(sOption, sOptionNameEnd, L"localnet")) {
 			PXCH_RULE* pRule = &PXCH_CONFIG_RULE_ARR(pPxchConfig)[dwRuleCounter];

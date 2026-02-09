@@ -273,3 +273,81 @@ Test different chain lengths:
    ```
 
 2. Check logs to verify exactly 3 proxies are used per connection
+
+### Test 6: HTTP Proxy Support
+
+Test HTTP proxy functionality:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   http proxy.example.com 8080
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds through HTTP proxy using CONNECT method
+
+### Test 7: HTTPS Proxy Support
+
+Test HTTPS proxy functionality:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   https proxy.example.com 8443
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds through HTTPS proxy
+
+### Test 8: HTTP Proxy with Authentication
+
+Test HTTP proxy with username/password:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   http proxy.example.com 8080 myuser mypass
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection succeeds with authentication
+
+### Test 9: Mixed Proxy Types
+
+Test mixing different proxy types in one chain:
+
+1. Edit `proxychains.conf`:
+   ```
+   strict_chain
+   
+   [ProxyList]
+   http proxy1.example.com 8080
+   socks5 proxy2.example.com 1080
+   https proxy3.example.com 8443
+   ```
+
+2. Run a test application:
+   ```cmd
+   proxychains.exe curl https://ifconfig.me
+   ```
+
+3. Expected result: Connection goes through all three proxies in order
