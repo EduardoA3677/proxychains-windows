@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// proxychains.exe.rc - Resource script for embedding hook DLLs
+//
+// To embed DLLs, define PXCH_EMBED_DLLS when building.
+// The CI workflow defines this after building all DLLs.
+// For local development without embedding, this file is a no-op.
+
+#include "../include/embedded_resources.h"
+
+#ifdef PXCH_EMBED_DLLS
+
+#if defined(_M_X64) || defined(_WIN64)
+// x64 build: embed both x64 and x86 hook DLLs
+IDR_HOOK_DLL_X64 PXCH_EMBEDDED_DLL_TYPE_A "..\\win32_output\\proxychains_hook_x64.dll"
+IDR_HOOK_DLL_X86 PXCH_EMBEDDED_DLL_TYPE_A "..\\win32_output\\proxychains_hook_x86.dll"
+#else
+// x86 build: embed only x86 hook DLL
+IDR_HOOK_DLL_X86 PXCH_EMBEDDED_DLL_TYPE_A "..\\win32_output\\proxychains_hook_x86.dll"
+#endif
+
+#endif // PXCH_EMBED_DLLS
