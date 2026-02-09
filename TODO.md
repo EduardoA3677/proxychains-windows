@@ -142,12 +142,12 @@
 - **Impact**: Medium - Maintainability
 
 ### Documentation
-- [ ] Developer documentation
+- [x] Developer documentation
 - [ ] API documentation for hooks
 - [ ] Architecture diagrams
 - [ ] Video tutorials
 - [ ] Troubleshooting guide expansion
-- **Status**: Basic README and TESTING.md exist
+- **Status**: CONTRIBUTING.md created with developer guidelines, architecture overview, and coding standards
 - **Difficulty**: Low
 - **Impact**: Medium - Easier contribution
 
@@ -173,12 +173,12 @@
 ## Feature Requests from Community
 
 ### User-Requested Features
-- [ ] Support for authentication with proxy servers (username/password)
+- [x] Support for authentication with proxy servers (username/password)
 - [ ] Whitelist/blacklist based on process name
 - [ ] Global system-wide proxying option
 - [ ] Browser extension integration
 - [ ] VPN-like system proxy configuration
-- **Status**: Not implemented
+- **Status**: Proxy authentication implemented for SOCKS5 (username/password), SOCKS4 (userid), and HTTP (Basic auth)
 - **Difficulty**: Various
 - **Impact**: Various - Based on user demand
 
@@ -207,13 +207,13 @@
 ## Next Actions
 
 ### Immediate (Next Sprint)
-1. Implement dynamic chain support (skip dead proxies)
-2. Add HTTP/HTTPS proxy support
+1. ~~Implement dynamic chain support (skip dead proxies)~~ ✅ Done
+2. ~~Add HTTP/HTTPS proxy support~~ ✅ Done
 3. Create unit testing framework
-4. Improve documentation
+4. ~~Improve documentation~~ ✅ Done (CONTRIBUTING.md created)
 
 ### Short Term (1-2 months)
-1. Implement round-robin and random chain modes
+1. ~~Implement round-robin and random chain modes~~ ✅ Done
 2. UDP associate for DNS
 3. Enhanced logging system
 4. Security audit
@@ -233,4 +233,4 @@ If you want to contribute to any of these features:
 4. Create a feature branch
 5. Submit a pull request
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details (to be created).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
