@@ -79,7 +79,7 @@ err_orig:
 	return bRet;
 
 err_inject:
-	IPCLOGE(L"Injecting WINPID " WPRDW L" Error: %ls", ProcessInformation.dwProcessId, FormatErrorToStr(dwReturn));
+	IPCLOGW(L"Injecting WINPID " WPRDW L" Error: %ls", ProcessInformation.dwProcessId, FormatErrorToStr(dwReturn));
 	// TODO: remove this line
 	SetLastError(dwReturn);
 	g_bCurrentlyInWinapiCall = FALSE;
@@ -138,7 +138,7 @@ err_orig:
 	return bRet;
 
 err_inject:
-	IPCLOGE(L"Injecting WINPID " WPRDW L" Error: %ls", ProcessInformation.dwProcessId, FormatErrorToStr(dwReturn));
+	IPCLOGW(L"Injecting WINPID " WPRDW L" Error: %ls", ProcessInformation.dwProcessId, FormatErrorToStr(dwReturn));
 	// TODO: remove this line
 	SetLastError(dwReturn);
 	g_bCurrentlyInWinapiCall = FALSE;
@@ -198,7 +198,7 @@ err_orig:
 	return bRet;
 
 err_inject:
-	IPCLOGE(L"Injecting WINPID " WPRDW L" Error: %ls", ProcessInformation.dwProcessId, FormatErrorToStr(dwReturn));
+	IPCLOGW(L"Injecting WINPID " WPRDW L" Error: %ls", ProcessInformation.dwProcessId, FormatErrorToStr(dwReturn));
 	SetLastError(dwReturn);
 	g_bCurrentlyInWinapiCall = FALSE;
 	return 1;
