@@ -1,0 +1,69 @@
+name: "Copilot Setup Steps"
+
+# Automatically run the setup steps when they are changed to allow for easy validation
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot
+  copilot-setup-steps:
+    runs-on: windows-latest
+
+    # Set the permissions to the lowest permissions possible
+    permissions:
+      contents: read
+
+    # Setup steps for Windows environment
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup Visual Studio environment
+        shell: cmd
+        run: |
+          echo Setting up Visual Studio environment for Copilot...
+          echo Visual Studio should already be available on windows-latest runner
+
+      - name: Cache submodules
+        uses: actions/cache@v4
+        with:
+          path: |
+            minhook
+            uthash
+          key: ${{ runner.os }}-submodules-${{ hashFiles('.gitmodules') }}
+          restore-keys: |
+            ${{ runner.os }}-submodules-
+
+      - name: Update submodules
+        shell: cmd
+        run: |
+          echo Initializing submodules...
+          git submodule update --init --recursive --remote
+
+      - name: Display build environment info
+        shell: cmd
+        run: |
+          echo Build environment ready for Copilot coding agent
+          echo.
+          echo Repository: proxychains-windows
+          echo Architecture support: x86 and x64
+          echo Build system: Visual Studio 2019+ (MSBuild)
+          echo.
+          echo Key files:
+          echo - Solution: proxychains.exe.sln
+          echo - Output: win32_output/
+          echo.
+          echo To build manually:
+          echo   devenv.com proxychains.exe.sln /build "Release|x64"
+          echo   devenv.com proxychains.exe.sln /build "Release|x86"
